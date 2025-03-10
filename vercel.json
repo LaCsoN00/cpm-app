@@ -11,14 +11,6 @@
     {
       "src": "/(.*)",
       "dest": "dist/server.js"
-    },
-    {
-      "src": "/manifest.json",
-      "dest": "/public/manifest.json"
-    },
-    {
-      "src": "/service-worker.js",
-      "dest": "/public/service-worker.js"
     }
   ]
 }
