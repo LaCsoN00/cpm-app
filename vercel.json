@@ -1,13 +1,24 @@
 {
-    "builds": [
-      {
-        "src": "next.config.js",
-        "use": "@vercel/next"
-      }
-    ],
-    "public": [
-      "public/manifest.json",
-      "public/service-worker.js"
-    ]
-  }
-  
+  "version": 2,
+  "builds": [
+    {
+      "src": "dist/server.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": ["prisma/schema.prisma"] }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "dist/server.js"
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "/public/manifest.json"
+    },
+    {
+      "src": "/service-worker.js",
+      "dest": "/public/service-worker.js"
+    }
+  ]
+}
