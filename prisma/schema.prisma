@@ -1,0 +1,63 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String       @id @default(uuid())
+  name         String
+  email        String       @unique
+  tasks        Task[]       // Tasks assigned to this user
+  createdTasks Task[]       @relation("CreatedTasks") // Tasks created by this user
+  projects     Project[]    @relation("UserProjects")
+  userProjects ProjectUser[] // Users' relation to projects
+}
+
+model Project {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  tasks       Task[]       // Tasks associated with this project
+  inviteCode  String       @unique
+  createdById String
+  createdBy   User         @relation("UserProjects", fields: [createdById], references: [id])
+  users       ProjectUser[] // Users working on this project
+}
+
+model Task {
+  id                  String   @id @default(uuid())
+  name                String
+  description         String
+  status              String   @default("To Do")
+  dueDate             DateTime?
+  price               Float?  
+  projectId           String
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user                User?    @relation(fields: [userId], references: [id])
+  userId              String?
+  createdById         String
+  createdBy           User     @relation("CreatedTasks", fields: [createdById], references: [id])
+  solutionDescription String?
+}
+
+model ProjectUser {
+  id        String   @id @default(uuid())
+  userId    String
+  projectId String
+  user      User     @relation(fields: [userId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([userId, projectId])
+}
