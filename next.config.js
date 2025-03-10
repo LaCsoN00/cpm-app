@@ -1,42 +1,32 @@
-import withPWA from "@ducanh2912/next-pwa";
+// next.config.js
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development',
+});
 
-const nextConfig = withPWA({
-  dest: "public",
-  experimental: {
-    turbo: {
-      resolveExtensions: [".mdx", ".tsx", ".ts", ".jsx", ".js", ".mjs", ".json"],
-    },
-  },
+module.exports = withPWA({
   async headers() {
     return [
       {
-        source: "/sw.js",
+        source: '/manifest.json',
         headers: [
           {
-            key: "Cache-Control",
-            value: "no-store, no-cache, must-revalidate, proxy-revalidate",
-          },
-          {
-            key: "Service-Worker-Allowed",
-            value: "/",
+            key: 'Content-Type',
+            value: 'application/json',
           },
         ],
       },
       {
-        source: "/manifest.json",
+        source: '/service-worker.js',
         headers: [
           {
-            key: "Content-Type",
-            value: "application/manifest+json",
-          },
-          {
-            key: "Cache-Control",
-            value: "public, max-age=0, must-revalidate",
+            key: 'Content-Type',
+            value: 'application/javascript',
           },
         ],
       },
     ];
   },
 });
-
-export default nextConfig;
