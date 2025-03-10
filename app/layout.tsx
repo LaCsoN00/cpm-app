@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import { Toaster } from "react-hot-toast";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 export const metadata: Metadata = {
   title: "CPM",
@@ -28,6 +29,7 @@ export default function RootLayout({
         <body>
           <Toaster position="top-center" />
           {children}
+          <SpeedInsights />
         </body>
       </html>
     </ClerkProvider>
