@@ -1,12 +1,13 @@
 import withPWA from "@ducanh2912/next-pwa";
 
 const nextConfig = withPWA({
-  dest: "public",
+  pwa: {
+    dest: "public",
+  },
   experimental: {
     turbo: {
       resolveExtensions: [".mdx", ".tsx", ".ts", ".jsx", ".js", ".mjs", ".json"],
     },
-    skipWaiting: true,
   },
   async headers() {
     return [
