@@ -1,12 +1,11 @@
-import withPWA from 'next-pwa';
+import withPWA from '@ducanh2912/next-pwa';
 
-export default withPWA({
-    dest: "public",   
-    disable: process.env.NODE_ENV === "development",       
-    register: true,         
-    skipWaiting: true,      
-    sw: "service-worker.js"
-});
+const nextConfig = withPWA({
+    dest: 'public',
+    disable: process.env.NODE_ENV === 'development',
+    register: true,
+  },
+);
 
 export async function headers() {
     return [
@@ -38,3 +37,4 @@ export async function headers() {
       },
   ];
 }
+export default nextConfig;
