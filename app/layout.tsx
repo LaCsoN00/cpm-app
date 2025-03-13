@@ -23,7 +23,7 @@ export default function RootLayout({
       <html lang="fr" data-theme="light" suppressHydrationWarning>
         <head>
           <link rel="shortcut icon" href="/favicon.svg" />
-          <meta name="apple-mobile-web-app-title" content="cpm app" />
+          <meta name="apple-mobile-web-app-title" content="Cpm app" />
           <link rel="manifest" href="/manifest.json" />
         </head>
         <body>
