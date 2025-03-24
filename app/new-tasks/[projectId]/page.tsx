@@ -36,7 +36,7 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [dueDate, setDueDate] = useState<Date | null>(null)
     const [name, setName] = useState("")
     const [description, setDescription] = useState("")
-    const [price, setPrice] = useState<string>("");  // État pour le prix
+    const [price, setPrice] = useState<string>("");
     const rooter = useRouter()
 
     const fetchInfos = async (projectId: string) => {
