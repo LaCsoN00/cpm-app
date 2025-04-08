@@ -60,27 +60,45 @@ export default function Home() {
     }
   }
 
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+useEffect(() => {
+  // Vérifier si le navigateur supporte les Service Workers et Background Sync
+  if ('serviceWorker' in navigator && 'SyncManager' in window) {
+    window.addEventListener('load', () => {
+      // Enregistrer le service worker
       navigator.serviceWorker
-        .register("/sw.js", { scope: '/' })
-        .then(() => console.log("Service Worker enregistré avec succès."))
-        .catch((err) => console.error("Erreur d'enregistrement du Service Worker:", err));
-    }
-  }, []);
+        .register('/sw.js')
+        .then(registration => {
+          console.log('Service Worker enregistré :', registration);
+
+          // Enregistrer la synchronisation en arrière-plan
+          const regWithSync = registration as ServiceWorkerRegistration & {
+            sync: {
+              register: (tag: string) => Promise<void>;
+            };
+          };
+
+          regWithSync.sync
+            .register('sync-pending-data')
+            .then(() => console.log('Synchronisation en arrière-plan enregistrée'))
+            .catch(err => console.error('Échec de l\'enregistrement de la synchronisation:', err));
+        })
+        .catch(err => console.error('Échec de l\'enregistrement du Service Worker:', err));
+    });
+  } else {
+    console.warn('Service Worker ou Background Sync non supporté par ce navigateur.');
+  }
+}, []);
 
   const isButtonDisabled = !name || !descrition;
 
   return (
     <Wrapper>
       <div>
-        {/* You can open the modal using document.getElementById('ID').showModal() method */}
-        <button className="btn  btn-primary mb-6" onClick={() => (document.getElementById('my_modal_3') as HTMLDialogElement).showModal()}>  Nouveau Projet <FolderGit2 /></button>
+        <button className="btn  btn-primary mb-6" onClick={() => (document.getElementById('my_modal_3') as HTMLDialogElement).showModal()}> Nouveau Projet <FolderGit2 /></button>
 
         <dialog id="my_modal_3" className="modal">
           <div className="modal-box">
             <form method="dialog">
-              {/* if there is a button in form, it will close the modal */}
               <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button><br />
             </form>
             <h3 className="font-bold text-lg">Nom du client</h3><br />
