@@ -6,11 +6,12 @@ import Wrapper from '@/app/components/Wrapper';
 import { Project, Task } from '@/type';
 import Link from 'next/link';
 import React, { useEffect, useState } from 'react'
-import ReactQuill from 'react-quill-new';
+import dynamic from 'next/dynamic';
 import { toast } from 'react-hot-toast';
 import 'react-quill-new/dist/quill.snow.css';
 import { useUser } from '@clerk/nextjs';
 
+const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
   const { user } = useUser();
   const email = user?.primaryEmailAddress?.emailAddress;

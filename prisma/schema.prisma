@@ -18,10 +18,10 @@ model User {
   id           String       @id @default(uuid())
   name         String
   email        String       @unique
-  tasks        Task[]       // Tasks assigned to this user
-  createdTasks Task[]       @relation("CreatedTasks") // Tasks created by this user
+  tasks        Task[]       
+  createdTasks Task[]       @relation("CreatedTasks") 
   projects     Project[]    @relation("UserProjects")
-  userProjects ProjectUser[] // Users' relation to projects
+  userProjects ProjectUser[] 
 }
 
 model Project {
@@ -30,11 +30,11 @@ model Project {
   description String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-  tasks       Task[]       // Tasks associated with this project
+  tasks       Task[]       
   inviteCode  String       @unique
   createdById String
   createdBy   User         @relation("UserProjects", fields: [createdById], references: [id])
-  users       ProjectUser[] // Users working on this project
+  users       ProjectUser[] 
 }
 
 model Task {
