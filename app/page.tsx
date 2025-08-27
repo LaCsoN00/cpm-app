@@ -81,7 +81,7 @@ useEffect(() => {
         console.log('Synchronisation en arrière-plan enregistrée');
       } else if ('SyncManager' in window) {
         // Certains navigateurs exposent SyncManager mais pas la propriété typings
-        // @ts-ignore
+        // @ts-expect-error - SyncManager n'est pas typé dans les defs TS
         await readyRegistration.sync.register('sync-pending-data');
         console.log('Synchronisation en arrière-plan enregistrée');
       } else {
