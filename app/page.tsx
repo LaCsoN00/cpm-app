@@ -21,7 +21,7 @@ export default function Home() {
   const fetchProjects = async (email: string) => {
     try {
       const myproject = await getProjectsCreatedByUser(email)
-      setProjects(myproject)
+      setProjects(Array.isArray(myproject) ? myproject : [])
       console.log(myproject)
     } catch (error) {
       console.error('Erreur lors du chargement des projets:', error);
@@ -134,9 +134,9 @@ useEffect(() => {
 
         <div className="w-full">
 
-          {projects.length > 0 ? (
+          {Array.isArray(projects) && projects.length > 0 ? (
             <ul className="w-full grid md:grid-cols-3 gap-6">
-              {projects.map((project) => (
+              {(projects ?? []).map((project) => (
                 <li key={project.id}>
                   <ProjectComponent project={project} admin={1} style={true} onDelete={deleteProject}></ProjectComponent>
                 </li>

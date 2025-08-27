@@ -18,6 +18,7 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import EmptyState from "@/app/components/EmptyState";
 import TaskComponent from "@/app/components/TaskComponent";
+import TaskCardMobile from "@/app/components/TaskCardMobile";
 import { toast } from "react-hot-toast";
 
 const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
@@ -182,32 +183,42 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
           </div>
           <div className="mt-6 border border-base-300 p-5 shadow-sm rounded-xl">
             {filteredTasks && filteredTasks.length > 0 ? (
-              <div className="overflow-auto">
-                <table className="table table-lg">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th>Titre</th>
-                      <th>Assigné à</th>
-                      <th className="hidden md:flex">A livré le</th>
-                      <th >Prix (CFA)</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="w-fit">
-                    {filteredTasks.map((task, index) => (
-                      <tr key={task.id} className="border-t last:border-none">
-                        <TaskComponent
-                          task={task}
-                          index={index}
-                          onDelete={deleteTask}
-                          email={email}
-                        />                      
+              <>
+                {/* Vue mobile en cards */}
+                <div className="md:hidden">
+                  {filteredTasks.map((task, index) => (
+                    <TaskCardMobile key={task.id} task={task} index={index} email={email} onDelete={deleteTask} />
+                  ))}
+                </div>
+
+                {/* Vue desktop en table inchangée */}
+                <div className="hidden md:block overflow-auto">
+                  <table className="table table-lg">
+                    <thead>
+                      <tr>
+                        <th></th>
+                        <th>Titre</th>
+                        <th>Assigné à</th>
+                        <th>A livré le</th>
+                        <th>Prix (CFA)</th>
+                        <th>Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="w-fit">
+                      {filteredTasks.map((task, index) => (
+                        <tr key={task.id} className="border-t last:border-none">
+                          <TaskComponent
+                            task={task}
+                            index={index}
+                            onDelete={deleteTask}
+                            email={email}
+                          />                      
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : (
               <EmptyState
                 imageSrc="/empty-task.png"
