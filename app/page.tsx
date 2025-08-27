@@ -61,32 +61,38 @@ export default function Home() {
   }
 
 useEffect(() => {
-  // Vérifier si le navigateur supporte les Service Workers et Background Sync
-  if ('serviceWorker' in navigator && 'SyncManager' in window) {
-    window.addEventListener('load', () => {
-      // Enregistrer le service worker
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then(registration => {
-          console.log('Service Worker enregistré :', registration);
+  const setupBackgroundSync = async () => {
+    try {
+      if (!('serviceWorker' in navigator)) {
+        console.warn('Service Worker non supporté par ce navigateur.');
+        return;
+      }
 
-          // Enregistrer la synchronisation en arrière-plan
-          const regWithSync = registration as ServiceWorkerRegistration & {
-            sync: {
-              register: (tag: string) => Promise<void>;
-            };
-          };
+      // Enregistre le SW s'il ne l'est pas déjà
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('Service Worker enregistré :', registration);
 
-          regWithSync.sync
-            .register('sync-pending-data')
-            .then(() => console.log('Synchronisation en arrière-plan enregistrée'))
-            .catch(err => console.error('Échec de l\'enregistrement de la synchronisation:', err));
-        })
-        .catch(err => console.error('Échec de l\'enregistrement du Service Worker:', err));
-    });
-  } else {
-    console.warn('Service Worker ou Background Sync non supporté par ce navigateur.');
-  }
+      // Attend que le SW devienne actif/ready avant d'utiliser Background Sync
+      const readyRegistration = await navigator.serviceWorker.ready;
+
+      // Vérifie la disponibilité de Background Sync avant l'enregistrement
+      if ('sync' in readyRegistration) {
+        await (readyRegistration as ServiceWorkerRegistration & { sync: { register: (tag: string) => Promise<void> } }).sync.register('sync-pending-data');
+        console.log('Synchronisation en arrière-plan enregistrée');
+      } else if ('SyncManager' in window) {
+        // Certains navigateurs exposent SyncManager mais pas la propriété typings
+        // @ts-ignore
+        await readyRegistration.sync.register('sync-pending-data');
+        console.log('Synchronisation en arrière-plan enregistrée');
+      } else {
+        console.warn('Background Sync non supporté par ce navigateur.');
+      }
+    } catch (err) {
+      console.error('Échec lors de la configuration du Service Worker/Background Sync:', err);
+    }
+  };
+
+  setupBackgroundSync();
 }, []);
 
   const isButtonDisabled = !name || !descrition;
