@@ -342,7 +342,6 @@ export default function Home() {
               <button className="btn btn-primary" onClick={handleSubmit} disabled={isButtonDisabled}>
                 Nouveau Projet <FolderGit2 />
               </button>
-              <button className="btn btn-secondary mt-4" onClick={clearAllStores}>Vider IndexedDB (Développement)</button>
             </div>
           </div>
         </dialog>
