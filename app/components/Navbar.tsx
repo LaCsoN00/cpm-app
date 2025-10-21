@@ -1,4 +1,5 @@
 "use client";
+
 import { UserButton, useUser } from "@clerk/nextjs";
 import { Menu, X } from "lucide-react";
 import Image from "next/image";
@@ -6,6 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import React, { useEffect, useState } from "react";
+import { MoonIcon, SunIcon } from "@heroicons/react/24/solid";
 import { checkAndAddUser } from "../actions";
 
 const Navbar = () => {
@@ -25,8 +27,8 @@ const Navbar = () => {
   ];
 
   useEffect(() => {
-    if (user?.primaryEmailAddress?.emailAddress && user?.fullName) {
-      checkAndAddUser(user?.primaryEmailAddress?.emailAddress, user?.fullName);
+    if (user?.primaryEmailAddress?.emailAddress && user?.fullName && user?.imageUrl) {
+      checkAndAddUser(user.primaryEmailAddress.emailAddress, user.fullName, user.imageUrl);
     }
   }, [user]);
 
@@ -56,20 +58,24 @@ const Navbar = () => {
             <Image src="/icon-512x512.png" alt="Logo" width={45} height={45} />
           </div>
           <span className="ml-3 font-bold text-3xl">
-            CPM <span className="text-primary">APP</span>
+            CPM <span className="text-primary">Project</span>
           </span>
         </div>
 
-        <button
-          className="btn w-fit btn-sm sm:hidden"
-          onClick={() => setMenuOpen(!menuOpen)}
-        >
-          <Menu className="w-4" />
-        </button>
+        <div className="flex items-center gap-2 sm:hidden">
+          <ThemeToggle />
+          <button
+            className="btn w-fit btn-sm"
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            <Menu className="w-4" />
+          </button>
+        </div>
 
         <div className="hidden sm:flex space-x-4 items-center ">
           {renderLinks("btn")}
           <UserButton />
+          <ThemeToggle />
         </div>
       </div>
 
@@ -94,3 +100,30 @@ const Navbar = () => {
 };
 
 export default Navbar;
+
+const ThemeToggle = () => {
+  const [theme, setTheme] = useState("light");
+
+  useEffect(() => {
+    const storedTheme = localStorage.getItem("theme") || "light";
+    setTheme(storedTheme);
+    document.documentElement.setAttribute("data-theme", storedTheme);
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "light" ? "dark" : "light";
+    setTheme(newTheme);
+    localStorage.setItem("theme", newTheme);
+    document.documentElement.setAttribute("data-theme", newTheme);
+  };
+
+  return (
+    <button onClick={toggleTheme} className="btn btn-sm btn-ghost">
+      {theme === "light" ? (
+        <SunIcon className="h-5 w-5" />
+      ) : (
+        <MoonIcon className="h-5 w-5" />
+      )}
+    </button>
+  );
+};

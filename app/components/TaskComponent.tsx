@@ -3,6 +3,8 @@ import React, { FC } from 'react'
 import UserInfo from './UserInfo'
 import Link from 'next/link'
 import { ArrowRight, Trash } from 'lucide-react'
+import { format } from 'date-fns'
+import { fr } from 'date-fns/locale'
 
 
 interface TaskProps {
@@ -47,19 +49,13 @@ const TaskComponent: FC<TaskProps> = ({ task, index, email , onDelete }) => {
                     role=""
                     email={task.user?.email || null}
                     name={task.user?.name || null}
+                    imageUrl={task.user?.imageUrl || null}
                 />
             </td>
 
             <td>
                 <div className='text-xs text-gray-500 hidden md:flex'>
-                    {task.dueDate && new Date(task.dueDate).toLocaleDateString()}
-                </div>
-            </td>
-
-            {/* Colonne Prix */}
-            <td>
-                <div className='text-xs text-gray-500 hidden md:flex'>
-                    {task.price ? `${task.price.toLocaleString()} CFA` : 'Non défini'}
+                    {task.dueDate ? format(new Date(task.dueDate), 'PPP', { locale: fr }) : 'Non définie'}
                 </div>
             </td>
 

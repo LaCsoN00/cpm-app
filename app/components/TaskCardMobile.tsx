@@ -3,6 +3,8 @@ import React, { FC } from 'react'
 import Link from 'next/link'
 import UserInfo from './UserInfo'
 import { ArrowRight, Trash } from 'lucide-react'
+import { format } from 'date-fns'
+import { fr } from 'date-fns/locale'
 
 interface TaskCardMobileProps {
     task: Task,
@@ -41,17 +43,13 @@ const TaskCardMobile: FC<TaskCardMobileProps> = ({ task, index, email, onDelete 
                 <h3 className='text-sm font-bold mt-2'>{task.name}</h3>
 
                 <div className='mt-3'>
-                    <UserInfo role="Assigné à" email={task.user?.email || null} name={task.user?.name || null} />
+                    <UserInfo role="Assigné à" email={task.user?.email || null} name={task.user?.name || null} imageUrl={task.user?.imageUrl || null} />
                 </div>
 
                 <div className='mt-3 grid grid-cols-2 gap-2 text-xs text-gray-500'>
                     <div>
                         <div className='font-semibold text-gray-600'>A livré le</div>
-                        <div>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'Non défini'}</div>
-                    </div>
-                    <div>
-                        <div className='font-semibold text-gray-600'>Prix (CFA)</div>
-                        <div>{task.price ? `${task.price.toLocaleString()} CFA` : 'Non défini'}</div>
+                        <div>{task.dueDate ? format(new Date(task.dueDate), 'PPP', { locale: fr }) : 'Non définie'}</div>
                     </div>
                 </div>
 

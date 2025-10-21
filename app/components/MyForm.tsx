@@ -3,15 +3,18 @@
 import { useState } from 'react';
 import { useUser } from '@clerk/nextjs';  // Importer useUser de Clerk
 import { addPendingChange } from '@/lib/idb';
-import { Project } from '@/lib/idb'; // Assurez-vous que le type Project est bien importé.
+import { Project } from '@/type'; // Assurez-vous que le type Project est bien importé.
 
 const MyForm = () => {
   // Initialisation du state avec les propriétés du projet.
   const [formData, setFormData] = useState<Project>({
     id: '', // id de type string, mais peut être vide au départ
     name: '',
-    description: '',
-    status: 'pending', // Statut initial du projet
+    description: '', // description peut être null, ajustez si nécessaire
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    inviteCode: '',
+    createdById: '',
   });
 
   const { user } = useUser(); // Récupérer l'utilisateur via Clerk
@@ -31,7 +34,7 @@ const MyForm = () => {
     }
 
     // Ajouter l'ID de l'utilisateur dans les données envoyées
-    const projectData: Project = { ...formData, userId: user.id };
+    const projectData: Project = { ...formData };
 
     // Si l'utilisateur est hors ligne, on stocke les données localement dans IndexedDB
     if (!navigator.onLine) {
@@ -39,6 +42,7 @@ const MyForm = () => {
         data: projectData,
         timestamp: new Date().toISOString(),
         userId: user.id, // Ajouter l'ID de l'utilisateur
+        type: 'project',
       });
       console.log('🟡 Données stockées localement (offline).');
     } else {
@@ -57,7 +61,15 @@ const MyForm = () => {
     }
 
     // Réinitialisation du formulaire après soumission (optionnel)
-    setFormData({ id: '', name: '', description: '', status: 'pending' });
+    setFormData({ 
+      id: '', 
+      name: '', 
+      description: '', 
+      createdAt: new Date(), 
+      updatedAt: new Date(), 
+      inviteCode: '', 
+      createdById: '', 
+    });
   };
 
   return (
@@ -80,7 +92,7 @@ const MyForm = () => {
           type="text"
           id="description"
           name="description"
-          value={formData.description}
+          value={formData.description ?? ''}
           onChange={handleChange}
           required
         />

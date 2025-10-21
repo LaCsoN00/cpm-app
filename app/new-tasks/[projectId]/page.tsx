@@ -1,4 +1,5 @@
 "use client"
+
 import { createTask, getProjectInfo, getProjectUsers } from '@/app/actions';
 import AssignTask from '@/app/components/AssignTask';
 import Wrapper from '@/app/components/Wrapper'
@@ -12,6 +13,8 @@ import dynamic from 'next/dynamic';
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 import { toast } from 'react-hot-toast';
+import { addPendingChange, Project as IdbProject, getProjectById, addTask as addTaskToIdb } from "@/lib/idb";
+import { Task } from '@/type';
 
 const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
@@ -37,19 +40,35 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [dueDate, setDueDate] = useState<Date | null>(null)
     const [name, setName] = useState("")
     const [description, setDescription] = useState("")
-    const [price, setPrice] = useState<string>("");
     const rooter = useRouter()
 
     const fetchInfos = async (projectId: string) => {
         try {
-            const project = await getProjectInfo(projectId, true)
-            setProject(project)
+            let currentProject: Project | null = null;
+            let associatedUsers: User[] = [];
 
-            const associatedUsers = await getProjectUsers(projectId)
-            setUsersProject(associatedUsers)
+            if (typeof window !== 'undefined' && !navigator.onLine) {
+                // Try to get from IndexedDB
+                const localProject = await getProjectById(projectId);
+                if (localProject) {
+                    currentProject = localProject as Project;
+                    // Assuming users are stored within the project or can be fetched separately from Idb
+                    associatedUsers = localProject.users || [];
+                    console.log("Projet et utilisateurs chargés depuis IndexedDB (hors ligne)");
+                }
+            } else {
+                // Fetch from network
+                currentProject = await getProjectInfo(projectId, true);
+                if (currentProject) {
+                    associatedUsers = await getProjectUsers(projectId);
+                }
+            }
+            setProject(currentProject);
+            setUsersProject(associatedUsers);
 
         } catch (error) {
-            console.error('Erreur lors du chargement du projet:', error);
+            console.error('Erreur lors du chargement du projet ou des utilisateurs:', error);
+            toast.error("Impossible de charger le projet ou les utilisateurs. Veuillez vérifier votre connexion.");
         }
     }
 
@@ -67,14 +86,49 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         setSelectedUser(user)
     }
 
+    const createTaskOffline = async (name: string, description: string, dueDate: Date | null, projectId: string, createdByEmail: string, assignToEmail: string | undefined, offlineTempId: string) => {
+        const newTask = {
+            id: offlineTempId,
+            name,
+            description,
+            dueDate,
+            projectId,
+            createdById: createdByEmail,
+            userId: assignToEmail || createdByEmail, // Use email as temporary userId
+            status: 'To Do',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        };
+        await addPendingChange({
+            userId: createdByEmail,
+            data: newTask as IdbProject | Task | { inviteCode: string } | { id: string },
+            timestamp: new Date().toISOString(),
+            type: 'task',
+        });
+        await addTaskToIdb(newTask as Task); // Add to IndexedDB immediately
+        console.log('Tâche ajoutée hors ligne (client-side):', newTask);
+        return newTask;
+    };
+
     const handleSubmit = async () => {
-        if (!name || !projectId || !selectedUser || !description || !dueDate || !price) {
+        if (!name || !projectId || !selectedUser || !description || !dueDate) {
             toast.error('Veuillez remplir tous les champs obligatoires')
             return
         }
+
         try {
-            await createTask(name, description, dueDate, projectId, email, selectedUser.email, parseFloat(price))
-            rooter.push(`/project/${projectId}`)
+            const offlineTempId = `offline-task-${Date.now()}`;
+            if (typeof window !== 'undefined' && !navigator.onLine) {
+                // Offline task creation
+                await createTaskOffline(name, description, dueDate, projectId, email, selectedUser.email, offlineTempId);
+                toast.success('Tâche créée hors ligne et sera synchronisée !');
+                rooter.push(`/project/${projectId}`);
+            } else {
+                // Online task creation
+                await createTask(name, description, dueDate, projectId, email, selectedUser.email);
+                toast.success('Tâche créée avec succès !');
+                rooter.push(`/project/${projectId}`);
+            }
         } catch (error) {
             toast.error("Une erreur est survenue lors de la création de la tâche." + error);
         }
@@ -126,18 +180,9 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                 onChange={setDescription}
                             />
                         </div>
-                        <div className='flex items-center justify-between mt-4'>
-                            <input
-                                type="number"
-                                placeholder="Prix en CFA"
-                                className='input input-bordered border-base-300 w-1/3'
-                                value={price}
-                                onChange={(e) => setPrice(e.target.value)}
-                            />
-                            <button className='btn mt-4 btn-md btn-primary' onClick={handleSubmit}>
-                                Créer la tâche
-                            </button>
-                        </div>
+                        <button className='btn mt-4 btn-md btn-primary' onClick={handleSubmit}>
+                            Créer la tâche
+                        </button>
                     </div>
                 </div>
 

@@ -38,16 +38,20 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
   const fetchInfos = async (taskId: string) => {
     try {
-      const task = await getTaskDetails(taskId)
-      setTask(task)
-      setStatus(task.status)
-      setRealStatus(task.status)
-      fetchProject(task.projectId)
+      const task = await getTaskDetails(taskId);
+      if (task) {
+        setTask(task);
+        setStatus(task.status);
+        setRealStatus(task.status);
+        await fetchProject(task.projectId);
+      }
     } catch (error) {
-      console.log(error)
+      console.log(error);
       toast.error("Erreur lors du chargement des détails de la tâche.");
+    } finally {
+      // setIsLoading(false); // This line was removed
     }
-  }
+  };
 
   const fetchProject = async (projectId: string) => {
     try {
@@ -152,18 +156,13 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                 role="Assigné à"
                 email={task.user?.email || null}
                 name={task.user?.name || null}
+                imageUrl={task.user?.imageUrl || null}
               />
             </div>            
           </div>
           
           {/* Nom de la tâche avec bordure */}
           <h1 className='font-semibold italic text-2xl mb-4 p-4 border border-base-300 rounded-lg'>{task.name}</h1>
-
-          {/* Section Prix */}
-          <div className="flex items-center justify-start p-5 border border-base-300 rounded-xl w-full md:w-fit my-4">
-              <span className="font-semibold text-xl">Montant : </span>
-              <span className="ml-2 text-lg">{task?.price ? `${task.price} Fcfa` : "Non défini"}</span>
-          </div>
 
           {/* Date d'échéance et status */}
           <div className='flex justify-between items-center mb-4'>
@@ -193,6 +192,7 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                   role="Créer par"
                   email={task.createdBy?.email || null}
                   name={task.createdBy?.name || null}
+                  imageUrl={task.createdBy?.imageUrl || null}
                 />
               </div>
               <div className='badge badge-primary my-4 md:mt-0'>

@@ -18,6 +18,7 @@ model User {
   id           String       @id @default(uuid())
   name         String
   email        String       @unique
+  imageUrl     String?
   tasks        Task[]       
   createdTasks Task[]       @relation("CreatedTasks") 
   projects     Project[]    @relation("UserProjects")
@@ -42,8 +43,9 @@ model Task {
   name                String
   description         String
   status              String   @default("To Do")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
   dueDate             DateTime?
-  price               Float?  
   projectId           String
   project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user                User?    @relation(fields: [userId], references: [id])

@@ -5,15 +5,16 @@ interface UserInfoProps {
     role: string
     email: string | null
     name: string | null
+    imageUrl?: string | null
 }
 
-const UserInfo: FC<UserInfoProps> = ({ role, email, name }) => {
+const UserInfo: FC<UserInfoProps> = ({ role, email, name, imageUrl }) => {
     return (
         <div className='flex items-center'>
             <div className='avatar'>
                 <div className='ring-primary ring-offset-base-100 w-9 rounded-full ring ring-offset-2 '>
                     <Image
-                        src={'/profile.avif'}
+                        src={imageUrl || '/profile.avif'}
                         alt={'profile image'}
                         height={500}
                         width={500}

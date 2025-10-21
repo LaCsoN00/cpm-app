@@ -1,4 +1,4 @@
-import { Project } from '@/type'
+import { Project } from '@/lib/idb'
 import { Copy, ExternalLink, FolderGit2, Trash } from 'lucide-react';
 import Link from 'next/link';
 import React, { FC } from 'react'
@@ -21,7 +21,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
         }
     }
 
-    const totalTasks = project.tasks?.length;
+    const totalTasks = project.tasks?.length ?? 0;
     const tasksByStatus = project.tasks?.reduce(
         (acc, task) => {
             if (task.status === "To Do") acc.toDo++;
@@ -76,11 +76,11 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
             </div>
 
             {admin === 1 && (
-                <div className='flex justify-between items-center rounded-lg p-2 border border-base-300 mb-3 bg-base-200/30'>
-                    <p className='text-primary font-bold ml-3'>
+                <div className='flex items-center rounded-lg p-2 border border-base-300 mb-3 bg-base-200/30 overflow-hidden'>
+                    <p className='text-primary font-bold ml-3 truncate flex-grow'>
                         {project.inviteCode}
                     </p>
-                    <button className='btn btn-sm ml-2' onClick={handleCopyCode}>
+                    <button className='btn btn-sm ml-2 flex-shrink-0' onClick={handleCopyCode}>
                         <Copy className='w-4' />
                     </button>
                 </div>
