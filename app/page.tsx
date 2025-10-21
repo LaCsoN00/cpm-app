@@ -7,7 +7,7 @@ import { createProject, deleteProjectById, getProjectsCreatedByUser, updateTaskS
 import { useUser } from "@clerk/nextjs";
 import { toast } from "react-hot-toast";
 import { Project, Task } from "@/type";
-import { addProject, getProjects, addPendingChange, removeFromPending, getPendingData, Project as IdbProject, deleteProjectFromIdb, PendingChange, updatePendingChange, saveUserEmail, getUserEmail, clearAllStores } from "@/lib/idb";
+import { addProject, getProjects, addPendingChange, removeFromPending, getPendingData, Project as IdbProject, deleteProjectFromIdb, PendingChange, updatePendingChange, saveUserEmail, getUserEmail } from "@/lib/idb";
 import ProjectComponent from "./components/ProjectComponent";
 import EmptyState from "./components/EmptyState";
 
