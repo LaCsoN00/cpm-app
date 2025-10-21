@@ -78,7 +78,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
             {admin === 1 && (
                 <div className='flex items-center rounded-lg p-2 border border-base-300 mb-3 bg-base-200/30 overflow-hidden'>
                     <p className='text-primary font-bold ml-3 flex-grow max-w-[calc(100%-60px)] overflow-hidden text-ellipsis whitespace-nowrap'>
-                        {project.inviteCode}
+                        {project.inviteCode.substring(0, 6)}...
                     </p>
                     <button className='btn btn-sm ml-2 flex-shrink-0' onClick={handleCopyCode}>
                         <Copy className='w-4' />
