@@ -53,7 +53,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
     }
 
     return (
-        <div key={project.id} className={`${style ? 'border border-base-300 p-5 shadow-sm ' : ''}text-base-content rounded-xl w-full text-left`}>
+        <div key={project.id} className={`${style ? 'border border-base-300 p-5 shadow-sm ' : ''}text-base-content rounded-xl w-full text-left max-w-full overflow-hidden`}>
 
             <div className='w-full flex items-center mb-3'>
                 <div className='bg-primary-content text-xl h-10 w-10 rounded-lg flex justify-center items-center'>
