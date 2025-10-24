@@ -1,10 +1,10 @@
 import AuthWrapper from '@/app/components/AuthWrapper'
-import { SignUp } from '@clerk/nextjs'
+import SupabaseAuth from '@/app/components/SupabaseAuth'
 
 export default function Page() {
   return (
     <AuthWrapper>
-      <SignUp />
+      <SupabaseAuth mode="signup" />
     </AuthWrapper>
   )
 }

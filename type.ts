@@ -1,4 +1,6 @@
-import { Project as PrismaProject, Task  as  PrismaTask, User } from '@prisma/client';
+import { Project as PrismaProject, Task as PrismaTask, User } from '@prisma/client';
+
+export type ExtendedUser = User;
 
 export type Project = PrismaProject & {
   totalTasks?: number;
@@ -14,11 +16,12 @@ export type Project = PrismaProject & {
     toDoPercentage: number;
   };
   tasks?: Task[];
-  users?: User[]; 
-  createdBy?: User, 
+  users?: ExtendedUser[]; // Use ExtendedUser here
+  createdBy?: ExtendedUser; // Use ExtendedUser here
 };
 
 export type Task = PrismaTask & {
-  user?: User | null; 
-  createdBy?: User | null ;
+  user?: ExtendedUser | null; // Use ExtendedUser here
+  createdBy?: ExtendedUser | null ;
+  title?: string; // Ajout explicite de la propriété title
 }

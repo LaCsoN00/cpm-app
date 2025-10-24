@@ -1,12 +1,12 @@
 import { openDB } from 'idb';
-import { Project as PrismaProject, Task as PrismaTask, User as PrismaUser } from '@prisma/client';
+import { Project as PrismaProject, Task as PrismaTask, User as PrismaUser, Role } from '@prisma/client';
 
 // Nom de la base de données et du store
 const DB_NAME = 'cpmapp-db';
 export const STORE_PENDING_CHANGES = 'pendingChanges';
 const STORE_PROJECTS = 'projects';
 const STORE_TASKS = 'tasks';
-const STORE_USER_DATA = 'userData'; // Nouveau store pour les données utilisateur
+export const STORE_USER_DATA = 'userData'; // Nouveau store pour les données utilisateur
 
 // Types pour les données stockées
 export type Project = PrismaProject & {
@@ -23,7 +23,7 @@ export type Project = PrismaProject & {
     toDoPercentage: number;
   };
   tasks?: Task[];
-  createdBy?: User | { email: string };
+  createdBy?: User; // Ensure this is just User, not User | { email: string }
   users?: User[];
 };
 
@@ -31,9 +31,11 @@ export type Task = PrismaTask & {
   user?: User | null;
   createdBy?: User | null;
   project?: Project;
+  name?: string; // Remplacer title par name
+  description?: string; // Conserver la description si elle est pertinente
 };
 
-export type User = PrismaUser;
+export type User = PrismaUser & { role: Role }; // Add role to User type
 
 // Interface représentant une modification en attente
 export interface PendingChange {
@@ -46,7 +48,7 @@ export interface PendingChange {
 
 // Ouverture ou création de la base de données IndexedDB
 export async function getDB() {
-  return openDB(DB_NAME, 1, {
+  return openDB(DB_NAME, 2, {
     upgrade(db) {
       if (!db.objectStoreNames.contains(STORE_PENDING_CHANGES)) {
         db.createObjectStore(STORE_PENDING_CHANGES, { keyPath: 'id', autoIncrement: true });
@@ -57,7 +59,7 @@ export async function getDB() {
       if (!db.objectStoreNames.contains(STORE_TASKS)) {
         db.createObjectStore(STORE_TASKS, { keyPath: 'id' });
       }
-      if (!db.objectStoreNames.contains(STORE_USER_DATA)) { // Création du nouveau store
+      if (!db.objectStoreNames.contains(STORE_USER_DATA)) {
         db.createObjectStore(STORE_USER_DATA, { keyPath: 'key' });
       }
     },

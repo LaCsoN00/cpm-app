@@ -3,16 +3,18 @@ import { Copy, ExternalLink, FolderGit2, Trash } from 'lucide-react';
 import Link from 'next/link';
 import React, { FC } from 'react'
 import { toast } from 'react-hot-toast';
+import { Role } from '@prisma/client';
 
 interface ProjectProps {
     project: Project
-    admin: number;
+    userRole: Role; // New prop for user role
+    createdById: string; // New prop for project creator ID
     style: boolean;
     onDelete?: (id: string) => void;
 
 }
 
-const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete }) => {
+const ProjectComponent: FC<ProjectProps> = ({ project, userRole, createdById, style, onDelete }) => {
 
     const handleDeleteClick = () => {
         const isConfirmed = window.confirm("Êtes-vous sûr de vouloir supprimer ce projet ?")
@@ -52,6 +54,8 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
         }
     }
 
+    const canManageProject = userRole === Role.ADMIN || createdById === project.createdById;
+
     return (
         <div key={project.id} className={`${style ? 'border border-base-300 p-5 shadow-sm ' : ''}text-base-content rounded-xl w-full text-left max-w-full overflow-hidden`}>
 
@@ -75,7 +79,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
                 <div className='badge badge-sm badge-ghost ml-1'>{project.users?.length}</div>
             </div>
 
-            {admin === 1 && (
+            {canManageProject && (
                 <div className='flex items-center rounded-lg p-2 border border-base-300 mb-3 bg-base-200/30 overflow-hidden'>
                     <p className='text-primary font-bold ml-3 flex-grow max-w-[calc(100%-60px)] overflow-hidden text-ellipsis whitespace-nowrap'>
                         {project.inviteCode.substring(0, 6)}...
@@ -147,7 +151,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
                     </Link>
                 )}
 
-                {admin === 1 && (
+                {canManageProject && (
                     <button className='btn btn-sm ml-3' onClick={handleDeleteClick}>
                         <Trash className='w-4' />
                     </button>

@@ -9,12 +9,12 @@ import React, { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic';
 import { toast } from 'react-hot-toast';
 import 'react-quill-new/dist/quill.snow.css';
-import { useUser } from '@clerk/nextjs';
+import { useSupabaseUserWithRole } from '../../hooks/useSupabaseUserWithRole';
 
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
-  const { user } = useUser();
-  const email = user?.primaryEmailAddress?.emailAddress;
+  const { user, role } = useSupabaseUserWithRole();
+  const email = user?.email;
 
   const [task, setTask] = useState<Task | null>(null)
   const [taskId, setTaskId] = useState<string>("")
@@ -40,7 +40,7 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     try {
       const task = await getTaskDetails(taskId);
       if (task) {
-        setTask(task);
+        setTask(task as unknown as Task);
         setStatus(task.status);
         setRealStatus(task.status);
         await fetchProject(task.projectId);
@@ -135,7 +135,7 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
   }, [status, realStatus])
 
   return (
-    <Wrapper>
+    <Wrapper userRole={role || "GUEST"}>
       {task ? (
         <div>
           <div className='flex flex-col md:justify-between md:flex-row'>

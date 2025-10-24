@@ -8,14 +8,15 @@
     "start": "next start",
     "lint": "next lint",
     "prisma:seed": "prisma db seed",
-    "vercel-build": "prisma generate && prisma migrate deploy && next build"
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
+    "promote-admin": "tsx scripts/promote-admin.ts"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.31.5",
     "@ducanh2912/next-pwa": "^10.2.9",
     "@heroicons/react": "^2.2.0",
     "@jridgewell/sourcemap-codec": "^1.5.5",
     "@prisma/client": "^6.14.0",
+    "@supabase/ssr": "^0.7.0",
     "@vercel/speed-insights": "^1.2.0",
     "a": "file:",
     "autoprefixer": "^10.4.21",
@@ -52,6 +53,7 @@
     "prisma": "^6.14.0",
     "rimraf": "^6.0.1",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5",
     "webpack": "^5.101.3"
   }

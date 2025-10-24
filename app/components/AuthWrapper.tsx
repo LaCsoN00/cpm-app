@@ -5,10 +5,14 @@ type WrapperProps = {
 }
 
 const AuthWrapper = ({children} : WrapperProps ) => {
-
   return (
-    <div className='h-screen flex justify-center items-center flex-col relative'>
+    <div className='min-h-screen relative overflow-hidden bg-white'>
+
+
+      {/* Main Content */}
+      <div className="relative z-10 flex items-center justify-center min-h-screen px-4 sm:px-0">
         {children}
+      </div>
     </div>
   )
 }

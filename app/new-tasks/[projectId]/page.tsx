@@ -4,7 +4,7 @@ import { createTask, getProjectInfo, getProjectUsers } from '@/app/actions';
 import AssignTask from '@/app/components/AssignTask';
 import Wrapper from '@/app/components/Wrapper'
 import { Project } from '@/type';
-import { useUser } from '@clerk/nextjs';
+import { useSupabaseUserWithRole } from '../../hooks/useSupabaseUserWithRole';
 import { User } from '@prisma/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -31,8 +31,8 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         ]
     };
 
-    const { user } = useUser();
-    const email = user?.primaryEmailAddress?.emailAddress as string;
+    const { user, role } = useSupabaseUserWithRole();
+    const email = user?.email as string;
     const [projectId, setProjectId] = useState("");
     const [project, setProject] = useState<Project | null>(null);
     const [usersProject, setUsersProject] = useState<User[]>([]); 
@@ -135,7 +135,7 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     }
 
     return (
-        <Wrapper>
+        <Wrapper userRole={role || "GUEST"}>
             <div>
                 <div className="breadcrumbs text-sm">
                     <ul>

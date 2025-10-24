@@ -1,18 +1,22 @@
-import { getProjectInfo } from "@/app/actions";
-import { auth } from "@clerk/nextjs/server";
+import { getCurrentUser, getProjectInfo } from "@/app/actions";
+import { createClient } from "@/utils/supabase/server";
 import React from "react";
 import EmptyState from "@/app/components/EmptyState";
 import ProjectDetailsClient from "@/app/project/[projectId]/ProjectDetailsClient";
+import { Role } from "@prisma/client";
 
 const Page = async ({ params: paramsPromise }: { params: Promise<{ projectId: string }> }) => {
-  const { userId } = await auth();
-  if (!userId) {
+  const supabase = createClient();
+  const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+  if (!supabaseUser) {
     return <div>Accès non autorisé</div>; // Ou rediriger vers la page de connexion
   }
 
   const params = await paramsPromise; // Await the promise to get the actual params object
 
   const project = await getProjectInfo(params.projectId, true);
+  const user = await getCurrentUser(); // Get current user and their role
+  const userRole = user?.role || Role.USER; // Default to USER if not found
 
   if (!project) {
     return <EmptyState
@@ -22,7 +26,7 @@ const Page = async ({ params: paramsPromise }: { params: Promise<{ projectId: st
   />;
   }
 
-  return <ProjectDetailsClient project={project} projectId={params.projectId} />;
+  return <ProjectDetailsClient project={project} projectId={params.projectId} userRole={userRole} />;
 };
 
 export default Page;

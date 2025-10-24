@@ -5,12 +5,101 @@ import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { addPendingChange, getProjectById, getProjectTasks as getProjectTasksFromIdb, addTask as addTaskToIdb, getProjects as getProjectsFromIdb, deleteProjectFromIdb } from "@/lib/idb";
-import { Task } from "@/lib/idb";
-import { User } from '@prisma/client';
+import { Task as IdbTask } from "@/lib/idb"; // Renommer pour éviter les conflits
+import { User, Role } from '@prisma/client';
+import type { Prisma } from '@prisma/client'; // Importer le type Prisma
+import { ExtendedUser } from '@/type'; // Importer ExtendedUser et Project de @/typ
+import { createClient } from "@/utils/supabase/server";
 
 type OfflineUser = Pick<User, 'email'>;
 
-export async function checkAndAddUser(email: string, name: string, imageUrl: string) {
+export async function getCurrentUser() {
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user) {
+    return null;
+  }
+  const user = await prisma.user.findUnique({
+    where: { email: data.user.email as string },
+    select: { id: true, name: true, email: true, imageUrl: true, role: true, approved: true, restricted: true },
+  });
+  console.log("Current user role:", user?.role); // Temporary log to check user's role
+  return user;
+}
+
+// Helper function to check user role
+const checkRole = async (requiredRoles: Role[]) => {
+  const user = await getCurrentUser();
+  if (!user || !requiredRoles.includes(user.role)) {
+    throw new Error("Accès non autorisé : rôle insuffisant.");
+  }
+  return user;
+};
+
+export async function updateUserRole(email: string, newRole: Role) {
+    try {
+        await prisma.user.update({
+            where: { email },
+            data: { role: newRole }
+        });
+        console.log(`Rôle utilisateur mis à jour: ${email} -> ${newRole}`);
+        
+        // Forcer la mise à jour du cache Next.js
+        revalidatePath('/');
+        revalidatePath('/general-projects');
+        revalidatePath('/admin');
+        
+        return true;
+    } catch (error) {
+        console.error("Erreur lors de la mise à jour du rôle:", error);
+        return false;
+    }
+}
+
+export async function getAllUsers() {
+    try {
+        const users = await prisma.user.findMany({
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                imageUrl: true,
+                role: true,
+                approved: true,
+                restricted: true,
+            },
+            orderBy: {
+                name: 'asc'
+            }
+        });
+        return users;
+    } catch (error) {
+        console.error("Erreur lors du chargement des utilisateurs:", error);
+        throw error;
+    }
+}
+
+export async function getUserByEmail(email: string) {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { email },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                imageUrl: true,
+                role: true,
+            }
+        });
+        console.log(`Utilisateur trouvé pour ${email}:`, user);
+        return user;
+    } catch (error) {
+        console.error("Erreur lors de la recherche de l'utilisateur:", error);
+        throw error;
+    }
+}
+
+export async function checkAndAddUser(email: string, name: string, imageUrl: string, role: Role = Role.USER) {
     if (!email) return
     try {
         const existingUser = await prisma.user.findUnique({
@@ -24,18 +113,20 @@ export async function checkAndAddUser(email: string, name: string, imageUrl: str
                     email,
                     name,
                     imageUrl,
+                    role,
                 }
             })
             console.error("Erreur lors de la vérification de l'utilisateur:");
-        } else if (existingUser && existingUser.name !== name || existingUser.imageUrl !== imageUrl) {
+        } else if (existingUser && (existingUser.name !== name || existingUser.imageUrl !== imageUrl)) {
             await prisma.user.update({
                 where: { email },
                 data: {
                     name,
                     imageUrl,
+                    // Ne pas mettre à jour le rôle ici pour éviter d'écraser les changements manuels
                 }
             })
-            console.error("Utilisateur déjà présent dans la base de données");
+            console.log("Utilisateur mis à jour (nom/image) - rôle conservé:", existingUser.role);
         }
     } catch (error) {
         console.error("Erreur lors de la vérification de l'utilisateur:", error);
@@ -43,14 +134,15 @@ export async function checkAndAddUser(email: string, name: string, imageUrl: str
 }
 
 export async function createProject(name: string, description: string | null, email: string, offlineTempId?: string) {
+  const currentUser = await checkRole([Role.ADMIN, Role.USER]); // Only ADMIN or USER can create projects
   console.log("createProject action called - offlineTempId:", offlineTempId);
   try {
     if (typeof window !== 'undefined' && !navigator.onLine) {
       const newProject = {
-        id: offlineTempId || `offline-${Date.now()}`, // Temporary ID for offline project or use provided offlineTempId
+        id: offlineTempId || `offline-${Date.now()}`,
         name,
         description,
-        createdBy: { email },
+        createdBy: { email, id: currentUser.id, name: currentUser.name, imageUrl: currentUser.imageUrl, role: currentUser.role },
         createdById: email,
         inviteCode: randomBytes(16).toString('hex'),
         createdAt: new Date(),
@@ -106,24 +198,47 @@ export async function createProject(name: string, description: string | null, em
   }
 }
 
-export async function getProjectsCreatedByUser(email: string) {
+export async function getProjectsCreatedByUser(email: string, skip: number = 0, take: number = 6, searchTerm: string = "", sortOrder: "asc" | "desc" = "asc") {
   if (!email) {
-    return [];
+    return { projects: [], totalCount: 0 };
   }
 
   try {
     if (typeof window !== 'undefined' && !navigator.onLine) {
       const localProjects = await getProjectsFromIdb();
-      const filteredProjects = localProjects.filter(project => project.createdById === email);
-      if (filteredProjects) {
-        console.log('Projets créés par l\'utilisateur chargés depuis IndexedDB (hors ligne):', filteredProjects);
-        return filteredProjects;
+      let filteredLocalProjects = localProjects.filter(project => 
+        project.createdById === email &&
+        (project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (project.description && project.description.toLowerCase().includes(searchTerm.toLowerCase())))
+      );
+      filteredLocalProjects = [...filteredLocalProjects].sort((a, b) => {
+        if (sortOrder === "asc") {
+          return a.name.localeCompare(b.name);
+        } else {
+          return b.name.localeCompare(a.name);
+        }
+      });
+
+      if (filteredLocalProjects) {
+        console.log('Projets créés par l\'utilisateur chargés depuis IndexedDB (hors ligne):', filteredLocalProjects);
+        const paginatedProjects = filteredLocalProjects.slice(skip, skip + take);
+        return { projects: paginatedProjects, totalCount: filteredLocalProjects.length };
       }
     }
+
+    const whereClause: Prisma.ProjectWhereInput = {
+      createdBy: { email },
+    };
+
+    if (searchTerm) {
+      whereClause.OR = [
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+        { description: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+    }
+
     const projects = await prisma.project.findMany({
-      where: {
-        createdBy: { email },
-      },
+      where: whereClause,
       include: {
         tasks: {
           include: {
@@ -139,19 +254,37 @@ export async function getProjectsCreatedByUser(email: string) {
                 name: true,
                 email: true,
                 imageUrl: true,
+                role: true, // Include role
               },
             },
           },
         },
+        createdBy: { // Include createdBy in select
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            imageUrl: true,
+            role: true,
+          },
+        },
       },
+      orderBy: {
+        name: sortOrder,
+      },
+      skip,
+      take,
     });
+
+    const totalCount = await prisma.project.count({ where: whereClause });
 
     const formattedProjects = projects.map((project) => ({
       ...project,
-      users: project.users.map((userEntry) => userEntry.user),
+      users: project.users.map((userEntry) => userEntry.user as ExtendedUser),
+      createdBy: project.createdBy as ExtendedUser,
     }));
 
-    return formattedProjects;
+    return { projects: formattedProjects, totalCount };
   } catch (error) {
     console.error('Erreur lors du chargement des projets depuis le réseau:', error);
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
@@ -161,30 +294,53 @@ export async function getProjectsCreatedByUser(email: string) {
   }
 }
 
-export async function getProjectsAssociatedWithUser(email: string) {
+export async function getProjectsAssociatedWithUser(email: string, skip: number = 0, take: number = 6, searchTerm: string = "", sortOrder: "asc" | "desc" = "asc") {
   if (!email) {
-    return [];
+    return { projects: [], totalCount: 0 };
   }
 
   try {
     if (typeof window !== 'undefined' && !navigator.onLine) {
       const localProjects = await getProjectsFromIdb();
-      const filteredProjects = localProjects.filter(project => project.users?.some(user => user.email === email));
-      if (filteredProjects) {
-        console.log('Projets associés à l\'utilisateur chargés depuis IndexedDB (hors ligne):', filteredProjects);
-        return filteredProjects;
+      let filteredLocalProjects = localProjects.filter(project => 
+        project.users?.some(user => user.email === email) &&
+        (project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (project.description && project.description.toLowerCase().includes(searchTerm.toLowerCase())))
+      );
+      filteredLocalProjects = [...filteredLocalProjects].sort((a, b) => {
+        if (sortOrder === "asc") {
+          return a.name.localeCompare(b.name);
+        } else {
+          return b.name.localeCompare(a.name);
+        }
+      });
+
+      if (filteredLocalProjects) {
+        console.log('Projets associés à l\'utilisateur chargés depuis IndexedDB (hors ligne):', filteredLocalProjects);
+        const paginatedProjects = filteredLocalProjects.slice(skip, skip + take);
+        return { projects: paginatedProjects, totalCount: filteredLocalProjects.length };
       }
     }
-    const projects = await prisma.project.findMany({
-      where: {
-        users: {
-          some: {
-            user: {
-              email,
-            },
+
+    const whereClause: Prisma.ProjectWhereInput = {
+      users: {
+        some: {
+          user: {
+            email,
           },
         },
       },
+    };
+
+    if (searchTerm) {
+      whereClause.OR = [
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+        { description: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+    }
+
+    const projects = await prisma.project.findMany({
+      where: whereClause,
       include: {
         tasks: true,
         users: {
@@ -195,20 +351,38 @@ export async function getProjectsAssociatedWithUser(email: string) {
                 name: true,
                 email: true,
                 imageUrl: true,
+                role: true, // Include role
               },
             },
           },
         },
+        createdBy: { // Include createdBy in select
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            imageUrl: true,
+            role: true,
+          },
+        },
       },
+      orderBy: {
+        name: sortOrder,
+      },
+      skip,
+      take,
     });
+
+    const totalCount = await prisma.project.count({ where: whereClause });
 
     const formattedProjects = projects.map((project) => ({
       ...project,
-      users: project.users.map((userEntry) => userEntry.user),
+      users: project.users.map((userEntry) => userEntry.user as ExtendedUser),
+      createdBy: project.createdBy as ExtendedUser,
     }));
 
     revalidatePath('/general-projects');
-    return formattedProjects;
+    return { projects: formattedProjects, totalCount };
   } catch (error) {
     console.error('Erreur lors du chargement des projets associés depuis le réseau:', error);
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
@@ -251,6 +425,7 @@ export async function getProjectInfo(idProject: string, details: boolean) {
                     name: true,
                     email: true,
                     imageUrl: true,
+                    role: true,
                   },
                 },
               },
@@ -367,6 +542,7 @@ export async function createTask(
     assignToEmail: string | undefined,
     offlineTempId?: string
 ) {
+    await checkRole([Role.ADMIN, Role.USER]); // Only ADMIN or USER can create tasks
     if (typeof window !== 'undefined' && !navigator.onLine) {
         const newTask = {
             id: offlineTempId || `offline-task-${Date.now()}`,
@@ -388,7 +564,7 @@ export async function createTask(
             timestamp: new Date().toISOString(),
             type: 'task',
         });
-        await addTaskToIdb(newTask as Task); // Add to IndexedDB immediately
+        await addTaskToIdb(newTask as IdbTask); // Add to IndexedDB immediately
         console.log('Tâche ajoutée hors ligne:', newTask);
         return newTask;
     }
@@ -437,7 +613,24 @@ export async function createTask(
 
 }
 export async function deleteTaskById(taskId: string) {
+  const user = await checkRole([Role.ADMIN, Role.USER]);
     try {
+        const taskToDelete = await prisma.task.findUnique({
+            where: { id: taskId },
+            select: { createdBy: { select: { id: true } }, project: { select: { createdById: true } } },
+        });
+
+        if (!taskToDelete) {
+            throw new Error("Tâche non trouvée.");
+        }
+
+        const isProjectCreator = taskToDelete.project?.createdById === user.id;
+        const isTaskCreator = taskToDelete.createdBy.id === user.id;
+
+        if (user.role !== Role.ADMIN && !isProjectCreator && !isTaskCreator) {
+            throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni le créateur de la tâche, ni le créateur du projet.");
+        }
+
         await prisma.task.delete({
             where: {
                 id: taskId
@@ -453,6 +646,7 @@ export async function deleteTaskById(taskId: string) {
 }
 
 export async function deleteProjectById(projectId: string) {
+  const user = await checkRole([Role.ADMIN, Role.USER]); // Only ADMIN or project creator can delete
   try {
     if (typeof window !== 'undefined' && !navigator.onLine) {
       // Gérer la suppression hors ligne
@@ -473,12 +667,17 @@ export async function deleteProjectById(projectId: string) {
       where: {
         id: projectId,
       },
+      select: { createdById: true },
     });
 
     if (!existingProject) {
       console.warn(`Tentative de suppression d'un projet inexistant avec l'ID : ${projectId}.`);
       revalidatePath('/general-projects');
       return; // Sortir si le projet n'existe pas
+    }
+
+    if (user.role !== Role.ADMIN && existingProject.createdById !== user.id) {
+      throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni le créateur du projet.");
     }
 
     await prisma.project.delete({
@@ -537,13 +736,22 @@ export const getTaskDetails = async (taskId: string) => {
 };
 
 export const updateTaskStatus = async (taskId: string, newStatus: string, solutionDescription?: string) => {
+  const user = await checkRole([Role.ADMIN, Role.USER]);
   try {
     const existingTask = await prisma.task.findUnique({
       where: { id: taskId },
+      select: { userId: true, project: { select: { createdById: true } }, solutionDescription: true }, // Include solutionDescription
     });
 
     if (!existingTask) {
       throw new Error('Tâche non trouvée.');
+    }
+
+    const isProjectCreator = existingTask.project.createdById === user.id;
+    const isTaskAssignee = existingTask.userId === user.id;
+
+    if (user.role !== Role.ADMIN && !isProjectCreator && !isTaskAssignee) {
+      throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni l'assigné de la tâche, ni le créateur du projet.");
     }
 
     const updatedTask = await prisma.task.update({
@@ -561,21 +769,44 @@ export const updateTaskStatus = async (taskId: string, newStatus: string, soluti
   }
 };
 
-export const getProjectTasks = async (projectId: string) => {
+export const getProjectTasks = async (projectId: string, skip: number = 0, take: number = 5, searchTerm: string = "", sortOrder: "asc" | "desc" = "asc") => {
   if (!projectId) {
-    return [];
+    return { tasks: [], totalCount: 0 };
   }
 
   try {
     if (typeof window !== 'undefined' && !navigator.onLine) {
-      const localTasks: Task[] = await getProjectTasksFromIdb(projectId);
-      if (localTasks) {
-        console.log('Tâches chargées depuis IndexedDB (hors ligne):', localTasks);
-        return localTasks;
+      const localTasks: IdbTask[] = await getProjectTasksFromIdb(projectId);
+      const filteredLocalTasks = [...localTasks].filter(task => 
+        task.projectId === projectId &&
+        ((task.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (task.description && task.description.toLowerCase().includes(searchTerm.toLowerCase())))
+      );
+      filteredLocalTasks.sort((a, b) => {
+        if (sortOrder === "asc") {
+          return (a.name || "").localeCompare(b.name || "");
+        } else {
+          return (b.name || "").localeCompare(a.name || "");
+        }
+      });
+
+      if (filteredLocalTasks) {
+        console.log('Tâches chargées depuis IndexedDB (hors ligne):', filteredLocalTasks);
+        const paginatedTasks = filteredLocalTasks.slice(skip, skip + take);
+        return { tasks: paginatedTasks, totalCount: filteredLocalTasks.length };
       }
     }
+    const whereClause: Prisma.TaskWhereInput = { projectId: projectId };
+
+    if (searchTerm) {
+      whereClause.OR = [
+        { name: { contains: searchTerm, mode: 'insensitive' } }, // Remplacer title par name
+        { description: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+    }
+
     const tasks = await prisma.task.findMany({
-      where: { projectId: projectId },
+      where: whereClause,
       include: {
         user: {
           select: {
@@ -583,6 +814,7 @@ export const getProjectTasks = async (projectId: string) => {
             name: true,
             email: true,
             imageUrl: true,
+            role: true, // Include role
           },
         },
         createdBy: {
@@ -591,15 +823,20 @@ export const getProjectTasks = async (projectId: string) => {
             name: true,
             email: true,
             imageUrl: true,
+            role: true, // Include role
           },
         },
       },
       orderBy: {
         createdAt: 'desc',
       },
+      skip,
+      take,
     });
 
-    return tasks;
+    const totalCount = await prisma.task.count({ where: whereClause });
+
+    return { tasks, totalCount };
   } catch (error) {
     console.error('Erreur lors du chargement des tâches du projet depuis le réseau:', error);
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
@@ -627,8 +864,18 @@ export const getProjectDashboardInfo = async (projectId: string) => {
                 name: true,
                 email: true,
                 imageUrl: true,
+                role: true,
               },
             },
+          },
+        },
+        createdBy: { // Include createdBy here
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            imageUrl: true,
+            role: true,
           },
         },
       },
@@ -669,7 +916,8 @@ export const getProjectDashboardInfo = async (projectId: string) => {
         inProgressPercentage,
         toDoPercentage,
       },
-      users: project.users.map((userEntry) => userEntry.user),
+      users: project.users.map((userEntry) => userEntry.user as ExtendedUser),
+      createdBy: project.createdBy as ExtendedUser,
     };
 
     return formattedProject;

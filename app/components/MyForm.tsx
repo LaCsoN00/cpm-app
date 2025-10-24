@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useUser } from '@clerk/nextjs';  // Importer useUser de Clerk
+import { useSupabaseUser } from '../hooks/useSupabaseUser';
 import { addPendingChange } from '@/lib/idb';
 import { Project } from '@/type'; // Assurez-vous que le type Project est bien importé.
 
@@ -17,7 +17,7 @@ const MyForm = () => {
     createdById: '',
   });
 
-  const { user } = useUser(); // Récupérer l'utilisateur via Clerk
+  const { user } = useSupabaseUser(); // Récupérer l'utilisateur via Supabase
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
