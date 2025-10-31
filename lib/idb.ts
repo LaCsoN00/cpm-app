@@ -1,41 +1,18 @@
 import { openDB } from 'idb';
-import { Project as PrismaProject, Task as PrismaTask, User as PrismaUser, Role } from '@prisma/client';
+import { Project as AppProject, Task as AppTask, User as AppUser } from '@/type'; // Import types from '@/type'
 
 // Nom de la base de données et du store
 const DB_NAME = 'cpmapp-db';
 export const STORE_PENDING_CHANGES = 'pendingChanges';
 const STORE_PROJECTS = 'projects';
-const STORE_TASKS = 'tasks';
 export const STORE_USER_DATA = 'userData'; // Nouveau store pour les données utilisateur
 
 // Types pour les données stockées
-export type Project = PrismaProject & {
-  totalTasks?: number;
-  collaboratorsCount?: number;
-  taskStats?: {
-    toDo: number;
-    inProgress: number;
-    done: number;
-  };
-  percentages?: {
-    progressPercentage: number;
-    inProgressPercentage: number;
-    toDoPercentage: number;
-  };
-  tasks?: Task[];
-  createdBy?: User; // Ensure this is just User, not User | { email: string }
-  users?: User[];
-};
+export type Project = AppProject; // Use AppProject from '@/type'
 
-export type Task = PrismaTask & {
-  user?: User | null;
-  createdBy?: User | null;
-  project?: Project;
-  name?: string; // Remplacer title par name
-  description?: string; // Conserver la description si elle est pertinente
-};
+export type Task = AppTask; // Use AppTask from '@/type'
 
-export type User = PrismaUser & { role: Role }; // Add role to User type
+export type User = AppUser; // Use AppUser from '@/type'
 
 // Interface représentant une modification en attente
 export interface PendingChange {
@@ -55,9 +32,6 @@ export async function getDB() {
       }
       if (!db.objectStoreNames.contains(STORE_PROJECTS)) {
         db.createObjectStore(STORE_PROJECTS, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(STORE_TASKS)) {
-        db.createObjectStore(STORE_TASKS, { keyPath: 'id' });
       }
       if (!db.objectStoreNames.contains(STORE_USER_DATA)) {
         db.createObjectStore(STORE_USER_DATA, { keyPath: 'key' });
@@ -139,29 +113,50 @@ export async function getProjectById(id: string): Promise<Project | undefined> {
 // Fonctions pour les tâches
 export async function addTask(task: Task) {
   const db = await getDB();
-  await db.put(STORE_TASKS, task);
+  // Lors de l'ajout d'une tâche, nous mettons à jour le projet parent
+  const project = await db.get(STORE_PROJECTS, task.projectId as string);
+  if (project) {
+    const updatedTasks = project.tasks ? [...project.tasks, task] : [task];
+    await db.put(STORE_PROJECTS, { ...project, tasks: updatedTasks });
+  } else {
+    console.warn(`Projet parent de la tâche ${task.id} introuvable pour la mise à jour.`);
+  }
 }
 
 export async function getTasks(): Promise<Task[]> {
   const db = await getDB();
-  return db.getAll(STORE_TASKS);
+  const allProjects = await db.getAll(STORE_PROJECTS);
+  const allTasks: Task[] = [];
+  allProjects.forEach(project => {
+    if (project.tasks) {
+      allTasks.push(...project.tasks);
+    }
+  });
+  return allTasks;
 }
 
 export async function getTaskById(id: string): Promise<Task | undefined> {
   const db = await getDB();
-  return db.get(STORE_TASKS, id);
+  const allProjects = await db.getAll(STORE_PROJECTS);
+  for (const project of allProjects) {
+    if (project.tasks) {
+      const task = project.tasks.find((t: Task) => t.id === id);
+      if (task) return task;
+    }
+  }
+  return undefined;
 }
 
 export async function getProjectTasks(projectId: string): Promise<Task[]> {
   const db = await getDB();
-  const allTasks = await db.getAll(STORE_TASKS);
-  return allTasks.filter(task => task.projectId === projectId);
+  const project = await db.get(STORE_PROJECTS, projectId);
+  return project?.tasks || [];
 }
 
 export async function clearAllStores() {
   const db = await getDB();
   await db.clear(STORE_PENDING_CHANGES);
   await db.clear(STORE_PROJECTS);
-  await db.clear(STORE_TASKS);
+  await db.clear(STORE_USER_DATA);
   console.log('Tous les stores IndexedDB ont été effacés.');
 }

@@ -20,19 +20,28 @@ model User {
   userProjects ProjectUser[]
   createdTasks Task[]        @relation("CreatedTasks")
   tasks        Task[]
+  assistanceRequests AssistanceRequest[] @relation("CreatedAssistanceRequests")
+  resolvedAssistanceRequests AssistanceRequest[] @relation("ResolvedAssistanceRequests")
+  createdTaskRequests TaskRequest[] @relation("ConsultantTaskRequests") // Requests created by this consultant
+  resolvedTaskRequests TaskRequest[] @relation("ResolvedTaskRequests") // Requests resolved by this user/admin
+  comments     Comment[]
+  commentReactions CommentReaction[] // Reactions to comments created by this user
 }
 
 model Project {
-  id          String        @id @default(uuid())
-  name        String
-  description String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  inviteCode  String        @unique
-  createdById String
-  createdBy   User          @relation("UserProjects", fields: [createdById], references: [id], onDelete: Cascade)
-  users       ProjectUser[]
-  tasks       Task[]
+  id                  String        @id @default(uuid())
+  name                String
+  description         String?
+  isConsultantProject Boolean       @default(false) // New field for consultant projects
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  inviteCode          String        @unique
+  createdById         String
+  createdBy           User          @relation("UserProjects", fields: [createdById], references: [id], onDelete: Cascade)
+  users               ProjectUser[]
+  tasks               Task[]
+  assistanceRequests  AssistanceRequest[] @relation("AssistanceRequestsOnProjects")
+  taskRequests        TaskRequest[] @relation("ProjectTaskRequests") // Requests for tasks within this project
 }
 
 model Task {
@@ -40,7 +49,8 @@ model Task {
   name                String
   description         String
   status              String    @default("To Do")
-  dueDate             DateTime?
+  priority            Priority  @default(LOW)
+  deadline            DateTime?
   projectId           String
   userId              String?
   createdById         String
@@ -50,6 +60,7 @@ model Task {
   createdBy           User      @relation("CreatedTasks", fields: [createdById], references: [id])
   project             Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user                User?     @relation(fields: [userId], references: [id])
+  comments             Comment[]
 }
 
 model ProjectUser {
@@ -65,6 +76,7 @@ model ProjectUser {
 enum Role {
   USER
   ADMIN
+  CONSULTANT
 }
 
 model UserRequest {
@@ -74,4 +86,73 @@ model UserRequest {
   password  String   // Mot de passe en hash (ou temporaire)
   createdAt DateTime @default(now())
   status    String   @default("pending") // pending, approved, rejected
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model AssistanceRequest {
+  id           String    @id @default(uuid())
+  consultantId String
+  consultant   User      @relation("CreatedAssistanceRequests", fields: [consultantId], references: [id])
+  projectId    String? // Optional, the ID of the project for which assistance is requested
+  project      Project?  @relation("AssistanceRequestsOnProjects", fields: [projectId], references: [id])
+  message      String    // Description of the assistance required
+  status       String    @default("pending") // pending, resolved, rejected
+  createdAt    DateTime  @default(now())
+  resolvedById String? // ID of the user who resolved the request
+  resolvedBy   User?     @relation("ResolvedAssistanceRequests", fields: [resolvedById], references: [id])
+  resolvedAt   DateTime?
+}
+
+model TaskRequest {
+  id           String    @id @default(uuid())
+  projectId    String
+  project      Project   @relation("ProjectTaskRequests", fields: [projectId], references: [id], onDelete: Cascade)
+  consultantId String
+  consultant   User      @relation("ConsultantTaskRequests", fields: [consultantId], references: [id])
+  name         String
+  description  String
+  dueDate      DateTime?
+  priority     Priority  @default(LOW)
+  deadline     DateTime?
+  comments     String?
+  status       String    @default("pending") // pending, approved, rejected
+  createdAt    DateTime  @default(now())
+  resolvedById String? // ID of the user who resolved the request (e.g., ADMIN/USER)
+  resolvedBy   User?     @relation("ResolvedTaskRequests", fields: [resolvedById], references: [id])
+  resolvedAt   DateTime?
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId  String?  // Parent comment for replies
+  parent    Comment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentReplies") // Replies to this comment
+  reactions CommentReaction[] // Reactions to this comment
+}
+
+enum ReactionType {
+  UPVOTE
+  DOWNVOTE
+}
+
+model CommentReaction {
+  id        String       @id @default(uuid())
+  type      ReactionType @default(UPVOTE) // Changed from emoji: String to type: ReactionType with default
+  createdAt DateTime     @default(now())
+  commentId String
+  comment   Comment      @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

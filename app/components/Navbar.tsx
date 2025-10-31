@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient } from "../../utils/supabase/client";
-import { Menu, X, LogOut, Moon, Sun } from "lucide-react";
+import { Menu, X, LogOut, Moon, Sun, User } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -42,12 +42,12 @@ const Navbar = ({ userRole }: NavbarProps) => {
     {
       href: "/general-projects",
       label: "Collaborations",
-      roles: [Role.ADMIN, Role.USER],
+      roles: [Role.USER],
     },
     {
       href: "/",
-      label: "Mes projets",
-      roles: [Role.ADMIN, Role.USER],
+      label: "Projets",
+      roles: [Role.ADMIN, Role.USER, Role.CONSULTANT],
     },
     {
       href: "/admin",
@@ -124,6 +124,15 @@ const Navbar = ({ userRole }: NavbarProps) => {
               <p className="font-semibold text-sm">{name || "Utilisateur"}</p>
               <p className="text-xs text-base-content/60 break-all">{user?.email}</p>
             </div>
+            <div className="divider my-0"></div>
+            <Link
+              href="/user/profile"
+              onClick={() => onOpenChange(false)}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-base-300 transition-colors duration-150"
+            >
+              <User className="w-4 h-4" />
+              <span className="text-sm">Mon profil</span>
+            </Link>
             <div className={`badge badge-lg w-full py-3 font-semibold text-white uppercase tracking-wider text-xs ${getRoleBadgeClass(userRole)}`}>
               {userRole === "GUEST" ? "Invité" : userRole}
             </div>

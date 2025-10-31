@@ -134,7 +134,7 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
             title="Actualiser la liste des utilisateurs"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Actualisation..." : "Actualiser"}
+            <span className="hidden sm:block">{refreshing ? "Actualisation..." : "Actualiser"}</span>
           </button>
         </div>
 
@@ -169,89 +169,72 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
               <p className="text-gray-500">Aucun utilisateur actif</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="table table-zebra w-full">
-                <thead>
-                  <tr>
-                    <th>Nom</th>
-                    <th>Email</th>
-                    <th>Rôle</th>
-                    <th>Statut</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeUsers.map((user) => (
-                    <tr key={user.id}>
-                      <td>
-                        <div className="flex items-center gap-3">
-                          {user.imageUrl && (
-                            <Image
-                              src={user.imageUrl}
-                              alt={user.name}
-                              width={32}
-                              height={32}
-                              className="rounded-full"
-                            />
-                          )}
-                          <span>{user.name}</span>
-                        </div>
-                      </td>
-                      <td>{user.email}</td>
-                      <td>
-                        <div
-                          className={`badge ${
-                            user.role === Role.ADMIN ? "badge-error" : "badge-success"
-                          }`}
-                        >
-                          {user.role}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="badge badge-info">Actif</div>
-                      </td>
-                      <td>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() =>
-                              handleRestrict(user.id, user.restricted)
-                            }
-                            disabled={
-                              user.email === currentUser?.email ||
-                              actionLoading === user.id
-                            }
-                            className="flex items-center gap-1 px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 transition-colors text-sm"
-                            title="Restreindre cet utilisateur"
-                          >
-                            {actionLoading === user.id ? (
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                              <Lock className="w-4 h-4" />
-                            )}
-                            Restreindre
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(user.id)}
-                            disabled={
-                              user.email === currentUser?.email ||
-                              actionLoading === user.id
-                            }
-                            className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors text-sm"
-                            title="Supprimer cet utilisateur"
-                          >
-                            {actionLoading === user.id ? (
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                              <Trash2 className="w-4 h-4" />
-                            )}
-                            Supprimer
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeUsers.map((user) => (
+                <div key={user.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex flex-col items-start gap-3 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3 w-full">
+                    {user.imageUrl && (
+                      <Image
+                        src={user.imageUrl}
+                        alt={user.name}
+                        width={48}
+                        height={48}
+                        className="rounded-full flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 text-lg">{user.name}</p>
+                      <p className="text-sm text-gray-500">{user.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span
+                      className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                        user.role === Role.ADMIN
+                          ? "bg-purple-100 text-purple-800"
+                          : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {user.role}
+                    </span>
+                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                      Actif
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-4 w-full">
+                    <button
+                      onClick={() => handleRestrict(user.id, user.restricted)}
+                      disabled={
+                        user.email === currentUser?.email || actionLoading === user.id
+                      }
+                      className="flex items-center gap-1 px-3 py-1 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 transition-colors text-sm flex-grow sm:flex-grow-0"
+                      title="Restreindre cet utilisateur"
+                    >
+                      {actionLoading === user.id ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Lock className="w-4 h-4" />
+                      )}
+                      Restreindre
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(user.id)}
+                      disabled={
+                        user.email === currentUser?.email || actionLoading === user.id
+                      }
+                      className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 transition-colors text-sm flex-grow sm:flex-grow-0"
+                      title="Supprimer cet utilisateur"
+                    >
+                      {actionLoading === user.id ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                      Supprimer
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -264,79 +247,76 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
               Utilisateurs Restreints
             </h2>
 
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {restrictedUsers.map(user => (
                 <div
                   key={user.id}
-                  className="bg-red-50 border-2 border-red-200 rounded-lg p-4 hover:shadow-lg transition-all"
+                  className="bg-red-50 border-2 border-red-200 rounded-lg p-4 hover:shadow-lg transition-all flex flex-col items-start gap-3"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    {/* User Info */}
-                    <div className="flex items-start gap-3 flex-1">
-                      {user.imageUrl && (
-                        <Image
-                          src={user.imageUrl}
-                          alt={user.name}
-                          width={48}
-                          height={48}
-                          className="rounded-full flex-shrink-0"
-                        />
+                  <div className="flex items-center gap-3 w-full">
+                    {user.imageUrl && (
+                      <Image
+                        src={user.imageUrl}
+                        alt={user.name}
+                        width={48}
+                        height={48}
+                        className="rounded-full flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <p className="font-semibold text-lg text-gray-900">{user.name}</p>
+                      <p className="text-sm text-gray-600 mb-2">{user.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span
+                      className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                        user.role === Role.ADMIN
+                          ? "bg-purple-100 text-purple-800"
+                          : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {user.role}
+                    </span>
+                    <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded-full">
+                      Restreint
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-4 w-full">
+                    <button
+                      onClick={() =>
+                        handleRestrict(user.id, user.restricted)
+                      }
+                      disabled={
+                        user.email === currentUser?.email ||
+                        actionLoading === user.id
+                      }
+                      className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors whitespace-nowrap flex-grow sm:flex-grow-0"
+                      title="Derestreindre cet utilisateur"
+                    >
+                      {actionLoading === user.id ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Unlock className="w-4 h-4" />
                       )}
-                      <div className="flex-1">
-                        <p className="font-semibold text-lg text-gray-900">{user.name}</p>
-                        <p className="text-sm text-gray-600 mb-2">{user.email}</p>
-                        <div className="flex gap-2">
-                          <div
-                            className={`badge ${
-                              user.role === Role.ADMIN
-                                ? "badge-error"
-                                : "badge-success"
-                            }`}
-                          >
-                            {user.role}
-                          </div>
-                          <div className="badge badge-warning">Restreint</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2 flex-shrink-0">
-                      <button
-                        onClick={() =>
-                          handleRestrict(user.id, user.restricted)
-                        }
-                        disabled={
-                          user.email === currentUser?.email ||
-                          actionLoading === user.id
-                        }
-                        className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-                        title="Derestreindre cet utilisateur"
-                      >
-                        {actionLoading === user.id ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                          <Unlock className="w-4 h-4" />
-                        )}
-                        Derestreindre
-                      </button>
-                      <button
-                        onClick={() => setDeleteConfirm(user.id)}
-                        disabled={
-                          user.email === currentUser?.email ||
-                          actionLoading === user.id
-                        }
-                        className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-                        title="Supprimer cet utilisateur"
-                      >
-                        {actionLoading === user.id ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
-                        Supprimer
-                      </button>
-                    </div>
+                      Derestreindre
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(user.id)}
+                      disabled={
+                        user.email === currentUser?.email ||
+                        actionLoading === user.id
+                      }
+                      className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 transition-colors whitespace-nowrap flex-grow sm:flex-grow-0"
+                      title="Supprimer cet utilisateur"
+                    >
+                      {actionLoading === user.id ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                      Supprimer
+                    </button>
                   </div>
                 </div>
               ))}

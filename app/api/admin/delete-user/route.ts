@@ -53,9 +53,11 @@ export async function DELETE(request: NextRequest) {
       where: { id: userId }
     })
 
-    // Also delete from Supabase auth if possible
-    // Note: In production, you might want to delete the Supabase auth user too
-    // This requires the Supabase service role key
+    // Aussi supprimer de Supabase auth si possible
+    // Note: En production, vous voudrez peut-être aussi supprimer l'utilisateur Supabase auth
+    // Cela nécessite la clé de rôle de service Supabase
+
+    return NextResponse.json({ message: 'User deleted successfully' }, { status: 200 })
   } catch (error) {
     console.error('Error deleting user:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

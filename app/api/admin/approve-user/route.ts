@@ -60,15 +60,12 @@ export async function POST(request: Request) {
       })
     }
 
-    // Approve the user
-    // Create Supabase user with le mot de passe stocké
-    const adminSupabase = createAdminClient()
-    
-    console.log('🔐 [APPROVE] Tentative de création de compte Supabase:');
-    console.log(`   Email: ${userRequest.email}`);
-    console.log(`   Mot de passe reçu: ${userRequest.password ? 'OUI' : 'NON'}`);
-    console.log(`   Longueur du mot de passe: ${userRequest.password?.length}`);
-    
+    // APPROVE action
+    const adminSupabase = createAdminClient();
+    let authUserId: string;
+
+    // 1. Attempt to create Supabase user
+    console.log('🔐 [APPROVE] Tentative de création ou de recherche de compte Supabase:');
     const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
       email: userRequest.email,
       password: userRequest.password,
@@ -76,42 +73,84 @@ export async function POST(request: Request) {
       user_metadata: {
         full_name: userRequest.fullName,
       },
-    })
+    });
 
-    if (authError || !authData.user) {
-      console.error('❌ [APPROVE] Erreur Supabase:', authError?.message || authError);
-      return NextResponse.json(
-        { 
-          message: 'Erreur lors de la création du compte utilisateur',
-          details: authError?.message || 'Erreur inconnue'
-        },
-        { status: 500 }
-      )
+    if (authError) {
+      if (authError.status === 409) {
+        console.log('⚠️ [APPROVE] Utilisateur déjà enregistré dans Supabase. Récupération de l\'utilisateur existant...');
+        // User already exists, fetch their ID
+        const { data: existingUsers, error: listError } = await adminSupabase.auth.admin.listUsers({
+          page: 1,
+          perPage: 100, // Augmenter le nombre pour s'assurer de trouver l'utilisateur
+        });
+
+        const user = existingUsers?.users.find(u => u.email === userRequest.email);
+
+        if (listError || !user) {
+          console.error('❌ [APPROVE] Erreur lors de la récupération de l\'utilisateur existant ou utilisateur non trouvé après erreur 409:', listError?.message || listError);
+          return NextResponse.json(
+            {
+              message: 'Erreur lors de la récupération du compte utilisateur existant',
+              details: listError?.message || 'Utilisateur existant non trouvé'
+            },
+            { status: 500 }
+          );
+        }
+        authUserId = user.id;
+        console.log('✅ [APPROVE] Utilisateur Supabase existant trouvé:', authUserId);
+      } else {
+        console.error('❌ [APPROVE] Erreur Supabase lors de la création ou de la recherche:', authError.message);
+        return NextResponse.json(
+          {
+            message: 'Erreur lors de la création ou de la vérification du compte utilisateur',
+            details: authError.message
+          },
+          { status: 500 }
+        );
+      }
+    } else if (authData.user) {
+      authUserId = authData.user.id;
+      console.log('✅ [APPROVE] Nouvel utilisateur Supabase créé:', authUserId);
+    } else {
+        console.error('❌ [APPROVE] Erreur inconnue: ni erreur, ni utilisateur Supabase créé.');
+        return NextResponse.json(
+            {
+                message: 'Une erreur inattendue est survenue lors de la gestion de l\'utilisateur Supabase.',
+                details: 'Aucun utilisateur créé et aucune erreur spécifique.'
+            },
+            { status: 500 }
+        );
     }
-    
-    console.log('✅ [APPROVE] Utilisateur Supabase créé:', authData.user.id);
 
-    // Create database user
-    const dbUser = await prisma.user.create({
-      data: {
-        id: authData.user.id,
+    // 2. Update or create user in Prisma database
+    const dbUser = await prisma.user.upsert({
+      where: { email: userRequest.email },
+      update: {
+        name: userRequest.fullName,
+        role: role as Role,
+        approved: true,
+      },
+      create: {
+        id: authUserId,
         name: userRequest.fullName,
         email: userRequest.email,
         role: role as Role,
         approved: true,
       },
-    })
+    });
+
+    console.log('✅ [APPROVE] Utilisateur Prisma mis à jour/créé:', dbUser.id);
 
     // Mark request as approved
     await prisma.userRequest.update({
       where: { id: requestId },
       data: { status: 'approved' },
-    })
+    });
 
     return NextResponse.json({
       message: 'Utilisateur approuvé avec succès',
       user: dbUser,
-    })
+    });
   } catch (error) {
     console.error('Error approving user:', error)
     return NextResponse.json(

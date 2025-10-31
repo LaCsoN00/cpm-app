@@ -2,7 +2,7 @@
 
 import Wrapper from "./Wrapper";
 import { useEffect, useState, useCallback } from "react";
-import { FolderGit2 } from "lucide-react";
+import { FolderGit2, RefreshCw } from "lucide-react";
 import { createProject, deleteProjectById, getProjectsCreatedByUser, updateTaskStatus, addUserToProject } from "../actions";
 import { useSupabaseUser } from "../hooks/useSupabaseUser";
 import { toast } from "react-hot-toast";
@@ -23,7 +23,7 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
   const email = user?.email as string;
   const [name, setName] = useState("");
   const [descrition, setDescription] = useState("");
-  const [projects, setProjects] = useState<IdbProject[]>(initialProjects);
+  const [projects, setProjects] = useState<IdbProject[]>(initialProjects as IdbProject[]);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
@@ -31,6 +31,7 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
   const itemsPerPage = 6; 
   const [currentUserEmail, setCurrentUserEmail] = useState<string | undefined>(undefined);
   const [fullCurrentUser, setFullCurrentUser] = useState<User | null>(null); // New state for full user object
+  const [refreshing, setRefreshing] = useState(false); // Ajout de l'état refreshing
 
   const filteredAndSortedProjects = [...projects].filter(project =>
     project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -215,18 +216,28 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
       if (email) {
         setCurrentUserEmail(email);
         await saveUserEmail(email);
-        fetchProjects(email);
-        syncPendingChanges();
-        const userDetails = await getCurrentUser(); // Fetch full user details
-        setFullCurrentUser(userDetails);
+        setRefreshing(true); // Début du rafraîchissement
+        try {
+          fetchProjects(email);
+          syncPendingChanges();
+          const userDetails = await getCurrentUser(); // Fetch full user details
+          setFullCurrentUser(userDetails);
+        } finally {
+          setRefreshing(false); // Fin du rafraîchissement
+        }
       } else {
         const storedEmail = await getUserEmail();
         if (storedEmail) {
           setCurrentUserEmail(storedEmail as unknown as string);
-          fetchProjects(storedEmail as unknown as string);
-          syncPendingChanges();
-          const userDetails = await getCurrentUser();
-          setFullCurrentUser(userDetails);
+          setRefreshing(true); // Début du rafraîchissement
+          try {
+            fetchProjects(storedEmail as unknown as string);
+            syncPendingChanges();
+            const userDetails = await getCurrentUser();
+            setFullCurrentUser(userDetails);
+          } finally {
+            setRefreshing(false); // Fin du rafraîchissement
+          }
         }
       }
     };
@@ -236,9 +247,14 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
   useEffect(() => {
     const handleOnline = async () => {
       console.log('Connexion rétablie, tentative de synchronisation...');
-      await syncPendingChanges();
-      if (currentUserEmail) {
-        fetchProjects(currentUserEmail);
+      setRefreshing(true); // Début du rafraîchissement
+      try {
+        await syncPendingChanges();
+        if (currentUserEmail) {
+          fetchProjects(currentUserEmail);
+        }
+      } finally {
+        setRefreshing(false); // Fin du rafraîchissement
       }
     };
     window.addEventListener('online', handleOnline);
@@ -293,6 +309,7 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
           inviteCode: `offline-invite-${Date.now()}`,
           createdAt: new Date(),
           updatedAt: new Date(),
+          isConsultantProject: false, // Add missing property
           tasks: [],
           users: [],
         };
@@ -342,9 +359,25 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
             <option value="asc">Trier par nom (A-Z)</option>
             <option value="desc">Trier par nom (Z-A)</option>
           </select>
+          <button
+            onClick={() => {
+              if (currentUserEmail) {
+                fetchProjects(currentUserEmail);
+                syncPendingChanges();
+              }
+            }}
+            disabled={!currentUserEmail}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors w-full sm:w-auto justify-center"
+            title="Actualiser la liste des projets"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:block">Actualiser</span>
+          </button>
         </div>
         <div className='flex items-center gap-4 w-full md:w-1/3 mt-4 md:mt-0'>
-          <button className="btn btn-primary rounded-lg whitespace-nowrap px-6 py-3" onClick={() => (document.getElementById('my_modal_3') as HTMLDialogElement).showModal()}> Nouveau Projet <FolderGit2 /></button>
+          {userRole !== Role.ADMIN && (
+            <button className="btn btn-primary rounded-lg whitespace-nowrap px-6 py-3" onClick={() => (document.getElementById('my_modal_3') as HTMLDialogElement).showModal()}> Nouveau Projet <FolderGit2 /></button>
+          )}
         </div>
       </div>
 
@@ -384,7 +417,7 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
           <ul className="w-full grid md:grid-cols-3 gap-6">
             {(filteredAndSortedProjects ?? []).map((project) => (
               <li key={project.id}>
-                <ProjectComponent project={project} userRole={userRole as Role} createdById={project.createdById as string} style={true} onDelete={deleteProject}></ProjectComponent>
+                <ProjectComponent project={project} userRole={userRole as Role} createdById={project.createdById as string} currentUserId={user?.id || ''} style={true} onDelete={deleteProject} showSummaryGauge={true}></ProjectComponent>
               </li>
             ))}
           </ul>

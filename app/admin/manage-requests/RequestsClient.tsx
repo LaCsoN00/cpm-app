@@ -27,7 +27,6 @@ export default function RequestsClient({ userRole }: RequestsClientProps) {
 
   useEffect(() => {
     fetchRequests()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchRequests = async () => {
@@ -123,7 +122,7 @@ export default function RequestsClient({ userRole }: RequestsClientProps) {
             title="Actualiser la liste des demandes"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Actualisation...' : 'Actualiser'}
+            <span className="hidden sm:block">{refreshing ? 'Actualisation...' : 'Actualiser'}</span>
           </button>
         </div>
 
@@ -207,6 +206,7 @@ export default function RequestsClient({ userRole }: RequestsClientProps) {
                       >
                         <option value="USER">👤 Utilisateur</option>
                         <option value="ADMIN">👨‍💼 Admin</option>
+                        <option value="CONSULTANT">💼 Consultant</option>
                       </select>
                     </div>
 

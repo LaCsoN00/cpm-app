@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import Wrapper from '../components/Wrapper'
-import { SquarePlus } from 'lucide-react'
+import { SquarePlus, RefreshCw } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { addUserToProject, getProjectsAssociatedWithUser, deleteProjectById, createProject } from '../actions'
 import { useSupabaseUser } from '../hooks/useSupabaseUser'
@@ -26,6 +26,7 @@ const PageClient = ({ userRole }: PageClientProps) => {
     const [currentPage, setCurrentPage] = useState(1)
     const [totalItems, setTotalItems] = useState(0)
     const itemsPerPage = 6
+    const [refreshing, setRefreshing] = useState(false)
 
     const filteredAndSortedProjects = [...associatedProjects].filter(project =>
         project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -43,72 +44,78 @@ const PageClient = ({ userRole }: PageClientProps) => {
 
         let fetchedFromNetwork = false;
 
-        if (navigator.onLine) {
-            try {
-                const { projects: networkProjects, totalCount } = await getProjectsAssociatedWithUser(userEmail, skip, itemsPerPage, searchTerm, sortOrder);
-                if (Array.isArray(networkProjects)) {
-                    setAssociatedProjects(networkProjects);
-                    setTotalItems(totalCount);
-                    const localProjects = await getProjects();
-                    const networkProjectIds = new Set(networkProjects.map(p => p.id));
+        setRefreshing(true); // Début du rafraîchissement
 
-                    for (const project of networkProjects) {
-                        await addProject(project);
-                    }
+        try {
+            if (navigator.onLine) {
+                try {
+                    const { projects: networkProjects, totalCount } = await getProjectsAssociatedWithUser(userEmail, skip, itemsPerPage, searchTerm, sortOrder);
+                    if (Array.isArray(networkProjects)) {
+                        setAssociatedProjects(networkProjects);
+                        setTotalItems(totalCount);
+                        const localProjects = await getProjects();
+                        const networkProjectIds = new Set(networkProjects.map(p => p.id));
 
-                    for (const localProject of localProjects) {
-                        if (localProject.id.startsWith('offline-')) {
-                            const synchronizedProject = networkProjects.find(
-                                p => p.name === localProject.name && p.description === localProject.description
-                            );
-                            if (synchronizedProject) {
-                                await deleteProjectFromIdb(localProject.id);
-                                await addProject(synchronizedProject);
-                                networkProjectIds.add(synchronizedProject.id);
-                                console.log('Projet hors ligne synchronisé et mis à jour:', localProject.id, '->', synchronizedProject.id);
+                        for (const project of networkProjects) {
+                            await addProject(project);
+                        }
+
+                        for (const localProject of localProjects) {
+                            if (localProject.id.startsWith('offline-')) {
+                                const synchronizedProject = networkProjects.find(
+                                    p => p.name === localProject.name && p.description === localProject.description
+                                );
+                                if (synchronizedProject) {
+                                    await deleteProjectFromIdb(localProject.id);
+                                    await addProject(synchronizedProject);
+                                    networkProjectIds.add(synchronizedProject.id);
+                                    console.log('Projet hors ligne synchronisé et mis à jour:', localProject.id, '->', synchronizedProject.id);
+                                }
                             }
                         }
-                    }
 
-                    for (const localProject of localProjects) {
-                        if (!networkProjectIds.has(localProject.id) && !localProject.id.startsWith('offline-')) {
-                            await deleteProjectFromIdb(localProject.id);
+                        for (const localProject of localProjects) {
+                            if (!networkProjectIds.has(localProject.id) && !localProject.id.startsWith('offline-')) {
+                                await deleteProjectFromIdb(localProject.id);
+                            }
                         }
+                        console.log('Projets associés chargés et mis en cache depuis le réseau:', networkProjects);
+                        fetchedFromNetwork = true;
+                    } else {
+                        console.warn('getProjectsAssociatedWithUser n\'a pas retourné un tableau.', networkProjects);
                     }
-                    console.log('Projets associés chargés et mis en cache depuis le réseau:', networkProjects);
-                    fetchedFromNetwork = true;
-                } else {
-                    console.warn('getProjectsAssociatedWithUser n\'a pas retourné un tableau.', networkProjects);
+                } catch (error) {
+                    console.error(error);
+                    toast.error("Erreur lors du chargement des projets associés depuis le réseau");
                 }
-            } catch (error) {
-                console.error(error);
-                toast.error("Erreur lors du chargement des projets associés depuis le réseau");
             }
-        }
 
-        if (!fetchedFromNetwork) {
-            try {
-                const localProjects = await getProjects();
-                const totalLocalProjects = localProjects.length;
-                setTotalItems(totalLocalProjects);
+            if (!fetchedFromNetwork) {
+                try {
+                    const localProjects = await getProjects();
+                    const totalLocalProjects = localProjects.length;
+                    setTotalItems(totalLocalProjects);
 
-                let projectsToDisplay = [];
-                if (userEmail) {
-                    projectsToDisplay = localProjects.filter(p => p.users?.some(u => u.email === userEmail) || (p.createdBy && 'email' in p.createdBy && p.createdBy.email === userEmail));
-                } else {
-                    projectsToDisplay = localProjects;
+                    let projectsToDisplay = [];
+                    if (userEmail) {
+                        projectsToDisplay = localProjects.filter(p => p.users?.some(u => u.user.email === userEmail) || (p.createdBy && 'email' in p.createdBy && p.createdBy.email === userEmail));
+                    } else {
+                        projectsToDisplay = localProjects;
+                    }
+                    const paginatedLocalProjects = projectsToDisplay.slice(skip, skip + itemsPerPage);
+                    setAssociatedProjects(paginatedLocalProjects);
+
+                    console.log('Projets associés chargés depuis IndexedDB:', paginatedLocalProjects);
+                    if (!navigator.onLine) {
+                        toast('Vous êtes hors ligne. Affichage des projets associés en cache.', { icon: '📡' });
+                    }
+                } catch (error) {
+                    console.error('Erreur lors du chargement des projets associés depuis IndexedDB:', error);
+                    toast.error("Erreur lors du chargement des projets associés depuis le cache.");
                 }
-                const paginatedLocalProjects = projectsToDisplay.slice(skip, skip + itemsPerPage);
-                setAssociatedProjects(paginatedLocalProjects);
-
-                console.log('Projets associés chargés depuis IndexedDB:', paginatedLocalProjects);
-                if (!navigator.onLine) {
-                    toast('Vous êtes hors ligne. Affichage des projets associés en cache.', { icon: '📡' });
-                }
-            } catch (error) {
-                console.error('Erreur lors du chargement des projets associés depuis IndexedDB:', error);
-                toast.error("Erreur lors du chargement des projets associés depuis le cache.");
             }
+        } finally {
+            setRefreshing(false); // Fin du rafraîchissement
         }
     }, [currentPage, itemsPerPage, searchTerm, sortOrder]);
 
@@ -288,6 +295,16 @@ const PageClient = ({ userRole }: PageClientProps) => {
                         <option value="desc">Trier par nom (Z-A)</option>
                     </select>
                 </div>
+                {/* Bouton Actualiser */}
+                <button
+                  onClick={() => fetchProjects(email)}
+                  disabled={refreshing || !email}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors w-full sm:w-auto justify-center mt-4 md:mt-0"
+                  title="Actualiser la liste des projets"
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:block">{refreshing ? 'Actualisation...' : 'Actualiser'}</span>
+                </button>
                 <div className='flex items-center gap-4 w-full md:w-1/3 mt-4 md:mt-0'>
                     <input
                         value={inviteCode}
@@ -311,7 +328,10 @@ const PageClient = ({ userRole }: PageClientProps) => {
                                   project={project} 
                                   userRole={userRole} 
                                   createdById={project.createdById as string}
+                                  currentUserId={user?.id || ''} // Add currentUserId prop
                                   style={true} 
+                                  showSummaryGauge={true} // Ensure all task statuses are displayed
+                                  collaboratorsCount={project.users?.filter(userEntry => userEntry.user && userEntry.user.id !== project.createdById).length || 0} // Pass collaborators count
                                 />
                             </li>
                         ))}

@@ -15,6 +15,7 @@ const MyForm = () => {
     updatedAt: new Date(),
     inviteCode: '',
     createdById: '',
+    isConsultantProject: false, // Add missing property
   });
 
   const { user } = useSupabaseUser(); // Récupérer l'utilisateur via Supabase
@@ -69,6 +70,7 @@ const MyForm = () => {
       updatedAt: new Date(), 
       inviteCode: '', 
       createdById: '', 
+      isConsultantProject: false, // Add missing property
     });
   };
 

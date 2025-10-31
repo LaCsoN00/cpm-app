@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import Link from 'next/link'
-import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Wand2 } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, User, ArrowRight } from 'lucide-react'
 import Image from 'next/image'
 
 interface SupabaseAuthProps {
@@ -19,7 +19,7 @@ export default function SupabaseAuth({ mode }: SupabaseAuthProps) {
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
-  const [useMagicLink, setUseMagicLink] = useState(false)
+  const [useMagicLink] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
   const router = useRouter()
   const supabase = createClient()
@@ -172,7 +172,7 @@ export default function SupabaseAuth({ mode }: SupabaseAuthProps) {
       <div className={`transition-all duration-1000 ${isAnimating ? 'transform scale-105 opacity-0' : 'transform scale-100 opacity-100'}`}>
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
           {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 p-5 sm:p-6 text-center relative overflow-hidden">
+          <div className="bg-[#1E3A8A] p-5 sm:p-6 text-center relative overflow-hidden">
             <div className="absolute inset-0 bg-black/10"></div>
             <div className="relative z-10">
               <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-lg">
@@ -199,7 +199,7 @@ export default function SupabaseAuth({ mode }: SupabaseAuthProps) {
           {/* Form */}
           <div className="p-4 sm:p-6 lg:p-8">
             <form onSubmit={handleAuth} className="space-y-3 sm:space-y-4 lg:space-y-5">
-              {mode === 'signup' && !useMagicLink && (
+              {mode === 'signup' && (
                 <div className="form-group">
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-1.5">
                     Nom complet
@@ -209,10 +209,10 @@ export default function SupabaseAuth({ mode }: SupabaseAuthProps) {
                     <input
                       type="text"
                       placeholder="Votre nom complet"
-                      className="w-full pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
+                      className="w-full pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-gray-900"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      required={mode === 'signup' && !useMagicLink}
+                      required={mode === 'signup'}
                     />
                   </div>
                 </div>
@@ -227,7 +227,7 @@ export default function SupabaseAuth({ mode }: SupabaseAuthProps) {
                   <input
                     type="email"
                     placeholder="votre@email.com"
-                    className="w-full pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
+                    className="w-full pl-10 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-gray-900"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -235,52 +235,36 @@ export default function SupabaseAuth({ mode }: SupabaseAuthProps) {
                 </div>
               </div>
               
-              {!useMagicLink && (
-                <div className="form-group">
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-1.5">
-                    Mot de passe
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      className="w-full pl-10 pr-10 py-2 sm:py-2.5 text-xs sm:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required={!useMagicLink}
-                      minLength={6}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Magic Link Toggle */}
-              <div className="flex items-center gap-2 p-2 sm:p-2.5 bg-blue-50 rounded-lg border border-blue-200">
-                <input
-                  type="checkbox"
-                  id="magiclink"
-                  checked={useMagicLink}
-                  onChange={(e) => setUseMagicLink(e.target.checked)}
-                  className="w-4 h-4 rounded cursor-pointer accent-blue-600 flex-shrink-0"
-                />
-                <label htmlFor="magiclink" className="flex items-center gap-1.5 cursor-pointer text-xs sm:text-sm font-medium text-gray-700">
-                  <Wand2 className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-                  Utiliser un lien magique
+              <div className="form-group">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-1.5">
+                  Mot de passe
                 </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-10 py-2 sm:py-2.5 text-xs sm:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-gray-900"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
+              
               
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2 sm:py-2.5 px-6 rounded-lg font-semibold text-xs sm:text-sm hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                className="w-full bg-[#1E3A8A] text-white py-2 sm:py-2.5 px-6 rounded-lg font-semibold text-xs sm:text-sm hover:bg-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>
@@ -289,17 +273,8 @@ export default function SupabaseAuth({ mode }: SupabaseAuthProps) {
                   </>
                 ) : (
                   <>
-                    {useMagicLink ? (
-                      <>
-                        <Wand2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        <span className="text-xs sm:text-sm">Envoyer le lien</span>
-                      </>
-                    ) : (
-                      <>
                         <span className="text-xs sm:text-sm">{mode === 'signin' ? 'Se connecter' : 'Créer mon compte'}</span>
                         <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      </>
-                    )}
                   </>
                 )}
               </button>

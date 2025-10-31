@@ -5,7 +5,7 @@ import AssignTask from '@/app/components/AssignTask';
 import Wrapper from '@/app/components/Wrapper'
 import { Project } from '@/type';
 import { useSupabaseUserWithRole } from '../../hooks/useSupabaseUserWithRole';
-import { User } from '@prisma/client';
+import { Priority, User, Role } from '@prisma/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useState } from 'react'
@@ -13,8 +13,8 @@ import dynamic from 'next/dynamic';
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 import { toast } from 'react-hot-toast';
-import { addPendingChange, Project as IdbProject, getProjectById, addTask as addTaskToIdb } from "@/lib/idb";
-import { Task } from '@/type';
+import { addPendingChange, getProjectById, addTask as addTaskToIdb, Task as IdbTask } from "@/lib/idb";
+import { Task, ExtendedUser } from '@/type';
 
 const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
@@ -35,12 +35,39 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const email = user?.email as string;
     const [projectId, setProjectId] = useState("");
     const [project, setProject] = useState<Project | null>(null);
-    const [usersProject, setUsersProject] = useState<User[]>([]); 
+    const [usersProject, setUsersProject] = useState<ExtendedUser[]>([]); 
     const [selectedUser, setSelectedUser] = useState<User | null>(null)
-    const [dueDate, setDueDate] = useState<Date | null>(null)
     const [name, setName] = useState("")
     const [description, setDescription] = useState("")
     const rooter = useRouter()
+    const [priority, setPriority] = useState<Priority>(Priority.LOW); // État pour la priorité, initialisé par calcul
+    const [deadline, setDeadline] = useState<Date | null>(null); // État pour la deadline
+
+    const getPriorityBadgeClass = (priority: Priority) => {
+        switch (priority) {
+          case Priority.HIGH:
+            return 'badge-error';
+          case Priority.MEDIUM:
+            return 'badge-warning';
+          case Priority.LOW:
+            return 'badge-info';
+          default:
+            return 'badge-neutral';
+        }
+      };
+    
+      const getPriorityText = (priority: Priority) => {
+        switch (priority) {
+          case Priority.HIGH:
+            return 'Haute';
+          case Priority.MEDIUM:
+            return 'Moyenne';
+          case Priority.LOW:
+            return 'Basse';
+          default:
+            return 'Non définie';
+        }
+      };
 
     const fetchInfos = async (projectId: string) => {
         try {
@@ -53,14 +80,16 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                 if (localProject) {
                     currentProject = localProject as Project;
                     // Assuming users are stored within the project or can be fetched separately from Idb
-                    associatedUsers = localProject.users || [];
+                    associatedUsers = (localProject.users?.map((item: { user: ExtendedUser }) => item.user) as ExtendedUser[]) || []; // Cast here
                     console.log("Projet et utilisateurs chargés depuis IndexedDB (hors ligne)");
                 }
             } else {
                 // Fetch from network
                 currentProject = await getProjectInfo(projectId, true);
                 if (currentProject) {
-                    associatedUsers = await getProjectUsers(projectId);
+                    const allProjectUsers = await getProjectUsers(projectId);
+                    // Filtrer les consultants de la liste des utilisateurs assignables
+                    associatedUsers = allProjectUsers.filter((user: ExtendedUser) => user.role !== Role.CONSULTANT) as ExtendedUser[]; // Explicitly type user and cast result
                 }
             }
             setProject(currentProject);
@@ -82,50 +111,78 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
     }, [params])
 
+    useEffect(() => {
+        if (role === "ADMIN") {
+            rooter.push("/admin"); // Redirect admins away from task creation
+        }
+    }, [role, rooter]);
+
     const handleUserSelect = (user: User) => {
         setSelectedUser(user)
     }
 
-    const createTaskOffline = async (name: string, description: string, dueDate: Date | null, projectId: string, createdByEmail: string, assignToEmail: string | undefined, offlineTempId: string) => {
-        const newTask = {
+    const assignableUsers = usersProject.filter(u => u.id !== user?.id && u.role !== Role.CONSULTANT);
+    const showAssignTask = assignableUsers.length > 0; // Show if there's at least one other assignable user
+
+    const createTaskOffline = async (name: string, description: string, deadline: Date | null, projectId: string, createdByEmail: string, assignToEmail: string | undefined, offlineTempId: string) => {
+        const newIdbTask: IdbTask = {
             id: offlineTempId,
             name,
             description,
-            dueDate,
             projectId,
             createdById: createdByEmail,
-            userId: assignToEmail || createdByEmail, // Use email as temporary userId
+            userId: assignToEmail || null, // userId in PrismaTask is optional, but often populated. Set to null if assignToEmail is undefined
             status: 'To Do',
             createdAt: new Date(),
             updatedAt: new Date(),
+            priority: Priority.LOW,
+            deadline,
+            comments: null,
+            solutionDescription: null,
         };
         await addPendingChange({
             userId: createdByEmail,
-            data: newTask as IdbProject | Task | { inviteCode: string } | { id: string },
+            data: newIdbTask,
             timestamp: new Date().toISOString(),
             type: 'task',
         });
-        await addTaskToIdb(newTask as Task); // Add to IndexedDB immediately
-        console.log('Tâche ajoutée hors ligne (client-side):', newTask);
-        return newTask;
+        await addTaskToIdb(newIdbTask); // Add to IndexedDB
+        console.log('Tâche ajoutée hors ligne (client-side):', newIdbTask);
+        return newIdbTask as Task; // Return as @/type.ts/Task
     };
 
     const handleSubmit = async () => {
-        if (!name || !projectId || !selectedUser || !description || !dueDate) {
+        if (!name || !projectId || !description || (showAssignTask && !selectedUser)) {
             toast.error('Veuillez remplir tous les champs obligatoires')
             return
+        }
+
+        let calculatedPriority: Priority = Priority.LOW; // Default priority
+        if (deadline) {
+            const now = new Date();
+            const deadlineDate = new Date(deadline);
+            const diffTime = deadlineDate.getTime() - now.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays <= 1) {
+                calculatedPriority = Priority.HIGH;
+            } else if (diffDays <= 3) {
+                calculatedPriority = Priority.MEDIUM;
+            } else {
+                calculatedPriority = Priority.LOW;
+            }
         }
 
         try {
             const offlineTempId = `offline-task-${Date.now()}`;
             if (typeof window !== 'undefined' && !navigator.onLine) {
                 // Offline task creation
-                await createTaskOffline(name, description, dueDate, projectId, email, selectedUser.email, offlineTempId);
+                await createTaskOffline(name, description, deadline, projectId, email, selectedUser?.email, offlineTempId);
                 toast.success('Tâche créée hors ligne et sera synchronisée !');
                 rooter.push(`/project/${projectId}`);
             } else {
                 // Online task creation
-                await createTask(name, description, dueDate, projectId, email, selectedUser.email);
+                await createTask(name, description, calculatedPriority, deadline, projectId, email, selectedUser?.email);
                 toast.success('Tâche créée avec succès !');
                 rooter.push(`/project/${projectId}`);
             }
@@ -151,16 +208,44 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
                 <div className='flex flex-col md:flex-row md:justify-between'>
                     <div className='md:w-1/4'>
-                        <AssignTask users={usersProject} projectId={projectId} onAssignTask={handleUserSelect} />
+                        {showAssignTask && (
+                            <AssignTask users={usersProject} projectId={projectId} onAssignTask={handleUserSelect} />
+                        )}
                         <div className='flex justify-between items-center mt-4'>
                             <span className='badge'>
-                                A livré
+                                Priorité
+                            </span>
+                            <div className={`badge ${getPriorityBadgeClass(priority)}`}>
+                                {getPriorityText(priority)}
+                            </div>
+                        </div>
+                        <div className='flex justify-between items-center mt-4'>
+                            <span className='badge whitespace-nowrap'>
+                                A livré le
                             </span>
                             <input
-                                placeholder="Date d'échéance"
+                                placeholder="Deadline"
                                 className='input input-bordered  border-base-300 '
                                 type="date"
-                                onChange={(e) => setDueDate(new Date(e.target.value))}
+                                onChange={(e) => {
+                                    const newDeadline = e.target.value ? new Date(e.target.value) : null;
+                                    setDeadline(newDeadline);
+                                    if (newDeadline) {
+                                        const now = new Date();
+                                        const diffTime = newDeadline.getTime() - now.getTime();
+                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                                        if (diffDays <= 1) {
+                                            setPriority(Priority.HIGH);
+                                        } else if (diffDays <= 3) {
+                                            setPriority(Priority.MEDIUM);
+                                        } else {
+                                            setPriority(Priority.LOW);
+                                        }
+                                    } else {
+                                        setPriority(Priority.LOW); // Default if no deadline
+                                    }
+                                }}
                             />
                         </div>
                     </div>
