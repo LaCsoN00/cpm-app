@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { addPendingChange, getProjectById, getProjectTasks as getProjectTasksFromIdb, addTask as addTaskToIdb, getProjects as getProjectsFromIdb, deleteProjectFromIdb } from "@/lib/idb";
 import { Task as IdbTask } from "@/lib/idb"; // Renommer pour éviter les conflits
-import { Task, Priority, Role, ReactionType } from '@prisma/client';
+import { Priority, Role, Task, ReactionType } from '@prisma/client';
 import type { Prisma } from '@prisma/client'; // Importer le type Prisma
 import { ExtendedUser } from '@/type'; // Importer ExtendedUser et Project de @/typ
 import { createClient } from "@/utils/supabase/server";
@@ -419,7 +419,6 @@ export async function getProjectsAssociatedWithUser(email: string, skip: number 
       createdBy: project.createdBy as ExtendedUser,
     }));
 
-    revalidatePath('/general-projects');
     return { projects: formattedProjects, totalCount };
   } catch (error) {
     console.error('Erreur lors du chargement des projets associés depuis le réseau:', error);
@@ -470,6 +469,37 @@ export async function getProjectInfo(idProject: string, details: boolean) {
             include: {
               user: true,
               createdBy: true,
+            },
+          },
+          assistanceRequests: {
+            include: {
+              consultant: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  imageUrl: true,
+                  role: true,
+                },
+              },
+              resolvedBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  imageUrl: true,
+                  role: true,
+                },
+              },
+              project: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+            orderBy: {
+              createdAt: 'desc',
             },
           },
         }),
@@ -607,17 +637,13 @@ export async function createTask(
     description: string,
     priority: Priority,
     deadline: Date | null,
+    attachments: { name: string, url: string }[] | null, // Nouveau paramètre pour plusieurs pièces jointes
     projectId: string,
     createdByEmail: string,
     assignToEmail: string | undefined,
     offlineTempId?: string
 ) {
-    const user = await checkRole([Role.USER, Role.CONSULTANT]); // Only USER or CONSULTANT can create tasks
-
-    // No longer explicitly disallowing consultants, as they are now allowed by checkRole
-    // if (user.role === Role.CONSULTANT) {
-    //     throw new Error("Accès non autorisé : les consultants ne peuvent pas créer de tâches.");
-    // }
+    const user = await checkRole([Role.USER]); // Seuls les USERS peuvent créer des tâches
 
     // Fetch the project to check ownership and collaborators
     const project = await prisma.project.findUnique({
@@ -646,9 +672,6 @@ export async function createTask(
 
     console.log(`createTask - Is Project Creator: ${isProjectCreator}, Is Collaborator: ${isCollaborator}`);
 
-    // Allow ADMINs, or USERs who are either project creators or collaborators on any project type.
-    // CONSULTANTs are explicitly blocked by the initial checkRole.
-
     // Validation: Prevent assigning tasks to consultants in consultant projects.
     if (assignToEmail) {
         const assignedUser = await prisma.user.findUnique({
@@ -656,34 +679,26 @@ export async function createTask(
             select: { role: true },
         });
         if (assignedUser?.role === Role.CONSULTANT && project.isConsultantProject) {
-            throw new Error("Impossible d\'assigner une tâche à un consultant dans un projet de consultant.");
+            throw new Error("Impossible d'assigner une tâche à un consultant dans un projet de consultant.");
         }
     }
 
-    if (
-        user.role !== Role.ADMIN && // Not an ADMIN
-        !isProjectCreator &&      // Not the project creator
-        !(user.role === Role.USER && isCollaborator) // Not a USER who is a collaborator
-    ) {
-        throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni le créateur du projet, ni un collaborateur du projet.");
+    // L'assignation est obligatoire
+    if (!assignToEmail) {
+        throw new Error("Une assignation est obligatoire pour créer une tâche.");
     }
 
-    // Special condition: if it's a consultant project, only ADMINs and USER collaborators can create tasks.
-    // The project creator (consultant) is already blocked by the initial checkRole and user.role check.
-    if (project.isConsultantProject && user.role === Role.USER && !isCollaborator) {
-        throw new Error("Accès non autorisé : En tant qu'utilisateur, vous devez être collaborateur sur ce projet de consultant pour créer une tâche.");
+    if (!isProjectCreator && !isCollaborator) {
+        throw new Error("Accès non autorisé : vous devez être créateur ou collaborateur du projet.");
     }
 
-    let assignedUserId = user.id;
-    if (assignToEmail) {
-        const assignedUser = await prisma.user.findUnique({
-            where: { email: assignToEmail }
-        });
-        if (!assignedUser) {
-            throw new Error(`Utilisateur avec l'email ${assignToEmail} introuvable`);
-        }
-        assignedUserId = assignedUser.id;
+    const assignedUser = await prisma.user.findUnique({
+        where: { email: assignToEmail }
+    });
+    if (!assignedUser) {
+        throw new Error(`Utilisateur avec l'email ${assignToEmail} introuvable`);
     }
+    const assignedUserId: string = assignedUser.id;
 
     let createdTask;
 
@@ -701,6 +716,7 @@ export async function createTask(
             createdAt: new Date(),
             updatedAt: new Date(),
             solutionDescription: null, // Add missing property
+            attachments: attachments || [], // Inclure les pièces jointes pour le mode hors ligne
         };
         await addPendingChange({
             userId: createdByEmail,
@@ -723,6 +739,9 @@ export async function createTask(
                 projectId,
                 createdById: user.id,
                 userId: assignedUserId,
+                attachments: {
+                  create: attachments ? attachments.map(att => ({ ...att, uploadedById: user.id })) : [],
+                },
             },
         });
     }
@@ -768,8 +787,13 @@ export async function deleteTaskById(taskId: string) {
         const isProjectCreator = taskToDelete.project?.createdById === user.id;
         const isTaskCreator = taskToDelete.createdBy.id === user.id;
         const isCollaborator = taskToDelete.project?.users.some(pu => pu.userId === user.id); // Check if current user is a collaborator
+        const isAssistantOnConsultantProject = taskToDelete.project?.isConsultantProject && user.role === Role.USER && !isProjectCreator && !isCollaborator;
 
         console.log(`deleteTaskById - Is Project Creator: ${isProjectCreator}, Is Task Creator: ${isTaskCreator}, Is Collaborator: ${isCollaborator}`);
+
+        if (isAssistantOnConsultantProject) {
+            throw new Error("Accès non autorisé : les assistants ne peuvent pas modifier un projet créé par un consultant.");
+        }
 
         // Allow ADMINs, or USERs who are either project creators, task creators, or collaborators on any project type.
         // CONSULTANTs are explicitly blocked by the initial checkRole.
@@ -780,11 +804,6 @@ export async function deleteTaskById(taskId: string) {
             !(user.role === Role.USER && isCollaborator) // Not a USER who is a collaborator
         ) {
             throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni le créateur de la tâche, ni le créateur du projet, ni un collaborateur du projet.");
-        }
-
-        // Special condition: if it's a consultant project and the user is a USER, they must be a collaborator to delete a task.
-        if (taskToDelete.project?.isConsultantProject && user.role === Role.USER && !isCollaborator) {
-            throw new Error("Accès non autorisé : En tant qu'utilisateur, vous devez être collaborateur sur ce projet de consultant pour supprimer une tâche.");
         }
 
         await prisma.task.delete({
@@ -836,6 +855,12 @@ export async function deleteProjectById(projectId: string) {
       throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni le créateur du projet.");
     }
 
+    await prisma.assistanceRequest.deleteMany({
+      where: {
+        projectId: projectId,
+      },
+    });
+
     await prisma.project.delete({
       where: {
         id: projectId,
@@ -875,6 +900,9 @@ export const getTaskDetails = async (taskId: string) => {
             imageUrl: true,
           },
         },
+        attachments: {
+          select: { id: true, name: true, url: true, createdAt: true, uploadedById: true }, // Inclure les champs nécessaires des pièces jointes
+        },
       },
     });
     if (!task) {
@@ -898,23 +926,65 @@ export const updateTaskStatus = async (taskId: string, newStatus: string, soluti
   try {
     const existingTask = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { userId: true, project: { select: { createdById: true } }, solutionDescription: true }, // Include solutionDescription
+      select: {
+        userId: true,
+        project: { select: { createdById: true, isConsultantProject: true, users: { select: { userId: true } } } },
+        solutionDescription: true,
+        status: true,
+        priority: true, // Assurez-vous que la priorité est bien incluse
+        user: { // Inclure l'utilisateur assigné
+          select: {
+            id: true, name: true, email: true, imageUrl: true, // Champs nécessaires
+          },
+        },
+        createdBy: { // Inclure le créateur de la tâche
+          select: {
+            id: true, name: true, email: true, imageUrl: true, // Champs nécessaires
+          },
+        },
+      },
     });
 
     if (!existingTask) {
       throw new Error('Tâche non trouvée.');
     }
 
+    // Vérifier si la tâche est déjà terminée ou en retard
+    if (existingTask.status === "Done" || existingTask.priority === "LATE") {
+      throw new Error("Impossible de modifier le statut d'une tâche terminée ou en retard.");
+    }
+
     const isProjectCreator = existingTask.project.createdById === user.id;
     const isTaskAssignee = existingTask.userId === user.id;
+    const isCollaborator = existingTask.project.users.some(pu => pu.userId === user.id);
+    const isAssistantOnConsultantProject = existingTask.project.isConsultantProject && user.role === Role.USER && !isProjectCreator && !isCollaborator;
+
+    if (isAssistantOnConsultantProject) {
+      throw new Error("Accès non autorisé : les assistants ne peuvent pas modifier un projet créé par un consultant.");
+    }
 
     if (user.role !== Role.ADMIN && !isProjectCreator && !isTaskAssignee) {
       throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni l'assigné de la tâche, ni le créateur du projet.");
     }
 
+    const updateData: { status: string; solutionDescription?: string | null; priority?: Priority } = {
+      status: newStatus,
+      solutionDescription: solutionDescription || existingTask.solutionDescription,
+    };
+
+    // Nouvelle logique pour la priorité (corrigée)
+    if ((existingTask.priority as Priority) === Priority.LATE && (newStatus === "To Do" || newStatus === "In Progress")) {
+      updateData.priority = Priority.HIGH;
+    } else if (newStatus === "To Do" || newStatus === "In Progress") {
+      updateData.priority = Priority.UNDEFINED;
+    } else if (newStatus === "Late") {
+      updateData.priority = Priority.LATE;
+    }
+    // Si le statut est "Done", la priorité n'est pas modifiée, elle reste telle quelle.
+
     const updatedTask = await prisma.task.update({
       where: { id: taskId },
-      data: { status: newStatus, solutionDescription: solutionDescription || existingTask.solutionDescription },
+      data: updateData,
     });
 
     return updatedTask;
@@ -964,10 +1034,9 @@ export async function updateTask(
   taskId: string,
   name: string,
   description: string,
-  priority: Priority,
   deadline: Date | null,
   assignToEmail: string | undefined,
-  status: string
+  attachments: { id?: string, name: string, url: string }[] | null, // Nouveau paramètre pour les pièces jointes
 ) {
   const user = await checkRole([Role.ADMIN, Role.USER, Role.CONSULTANT]); // Allow CONSULTANT to access for checking, but deny update
 
@@ -978,15 +1047,19 @@ export async function updateTask(
     const existingTask = await prisma.task.findUnique({
       where: { id: taskId },
       select: {
-        createdBy: { select: { id: true } },
-        project: {
-          select: {
-            createdById: true,
-            isConsultantProject: true, // Include this to check project type
-            users: { select: { userId: true } }, // Include project collaborators
-          },
-        },
+        id: true,
+        name: true,
+        description: true,
+        status: true, // Inclure le statut
+        priority: true, // Inclure la priorité
+        deadline: true,
         userId: true,
+        createdById: true,
+        projectId: true,
+        project: { // Inclure le projet pour vérifier isConsultantProject et createdById
+          select: { createdById: true, isConsultantProject: true, users: { select: { userId: true } } },
+        },
+        attachments: { select: { id: true, name: true, url: true } },
       },
     });
 
@@ -994,16 +1067,22 @@ export async function updateTask(
       throw new Error("Tâche non trouvée.");
     }
 
-    console.log(`updateTask - User Role: ${user.role}, User ID: ${user.id}`);
-    console.log(`updateTask - Project Created By ID: ${existingTask.project.createdById}, Is Consultant Project: ${existingTask.project.isConsultantProject}`);
-    console.log(`updateTask - Project Users: ${JSON.stringify(existingTask.project.users)}`);
+    // Vérifier si la tâche est déjà terminée ou en retard
+    if (existingTask.status === "Done" || existingTask.priority === "LATE") {
+      throw new Error("Impossible de modifier une tâche terminée ou en retard.");
+    }
 
     const isProjectCreator = existingTask.project.createdById === user.id;
-    const isTaskCreator = existingTask.createdBy.id === user.id;
+    const isTaskCreator = existingTask.createdById === user.id;
     const isTaskAssignee = existingTask.userId === user.id;
-    const isCollaborator = existingTask.project.users.some(pu => pu.userId === user.id); // Check if current user is a collaborator
+    const isCollaborator = existingTask.project.users.some(pu => pu.userId === user.id);
+    const isAssistantOnConsultantProject = existingTask.project.isConsultantProject && user.role === Role.USER && !isProjectCreator && !isCollaborator;
 
-    console.log(`updateTask - Is Project Creator: ${isProjectCreator}, Is Task Creator: ${isTaskCreator}, Is Task Assignee: ${isTaskAssignee}, Is Collaborator: ${isCollaborator}`);
+    console.log(`User Role: ${user.role}, Project Creator: ${isProjectCreator}, Task Creator: ${isTaskCreator}, Task Assignee: ${isTaskAssignee}, Collaborator: ${isCollaborator}`);
+
+    if (isAssistantOnConsultantProject) {
+      throw new Error("Accès non autorisé : les assistants ne peuvent pas modifier un projet créé par un consultant.");
+    }
 
     // Allow ADMINs, or USERs who are either project creators, task creators, task assignees, or collaborators on any project type.
     // CONSULTANTs are explicitly blocked by the initial checkRole (line 910).
@@ -1017,12 +1096,7 @@ export async function updateTask(
       throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni le créateur du projet, ni le créateur ou l'assigné de la tâche, ni un collaborateur du projet.");
     }
 
-    // Special condition: if it's a consultant project and the user is a USER, they must be a collaborator to update a task.
-    if (existingTask.project.isConsultantProject && user.role === Role.USER && !isCollaborator) {
-        throw new Error("Accès non autorisé : En tant qu'utilisateur, vous devez être collaborateur sur ce projet de consultant pour modifier une tâche.");
-    }
-
-    let assignedUserId: string | undefined = undefined;
+    let assignedUserId: string | null = null;
     if (assignToEmail) {
       const assignedUser = await prisma.user.findUnique({
         where: { email: assignToEmail }
@@ -1033,17 +1107,43 @@ export async function updateTask(
       assignedUserId = assignedUser.id;
     }
 
-    const updatedTask = await prisma.task.update({
+    const existingAttachmentIds = new Set(existingTask.attachments.map(att => att.id));
+    const attachmentsToCreate = attachments?.filter(att => !att.id).map(att => ({ ...att, uploadedById: user.id, taskId }));
+    const attachmentsToKeepIds = attachments?.filter(att => att.id && existingAttachmentIds.has(att.id)).map(att => att.id);
+    const attachmentsToDeleteIds = Array.from(existingAttachmentIds).filter(id => !attachmentsToKeepIds?.includes(id));
+
+    // Supprimer les pièces jointes qui ne sont plus présentes
+    if (attachmentsToDeleteIds.length > 0) {
+      await prisma.attachment.deleteMany({
+        where: { id: { in: attachmentsToDeleteIds } },
+      });
+    }
+
+    // Créer de nouvelles pièces jointes
+    if (attachmentsToCreate && attachmentsToCreate.length > 0) {
+      await prisma.attachment.createMany({
+        data: attachmentsToCreate,
+      });
+    }
+
+    let updatedTask = await prisma.task.update({
       where: { id: taskId },
       data: {
         name,
         description,
-        priority,
+        // priority,
         deadline,
         userId: assignedUserId,
-        status,
+        // Supprimé: attachmentName,
+        // Supprimé: attachmentUrl,
+        // status,
       },
     });
+
+    // After updating basic task details, automatically update status and priority
+    updatedTask = await updateTaskStatusAutomatically(updatedTask);
+
+    console.log(`[updateTask] Tâche mise à jour avec l'ID: ${taskId}, nouvelle deadline: ${deadline?.toISOString() || 'N/A'}`);
 
     revalidatePath(`/task-details/${taskId}`);
     revalidatePath(`/project/${existingTask.project.createdById}`); // Revalidate project page to update task list
@@ -1057,7 +1157,17 @@ export async function updateTask(
   }
 }
 
-export async function createAssistanceRequest(message: string, projectId: string | null = null) {
+// Nouvelle signature pour inclure les détails de la tâche
+export async function createAssistanceRequest(
+  message: string, 
+  projectId: string | null = null,
+  taskDetails?: {
+    name: string;
+    description: string;
+    priority: Priority;
+    deadline: Date | null;
+  }
+) {
   try {
     const currentUser = await checkRole([Role.CONSULTANT]); // Only CONSULTANTs can create assistance requests
 
@@ -1069,7 +1179,6 @@ export async function createAssistanceRequest(message: string, projectId: string
       throw new Error("Le message d'assistance ne peut pas être vide.");
     }
 
-    // Optional: Verify project exists if projectId is provided
     if (projectId) {
       const projectExists = await prisma.project.findUnique({
         where: { id: projectId },
@@ -1085,10 +1194,13 @@ export async function createAssistanceRequest(message: string, projectId: string
         projectId: projectId,
         message: message,
         status: "pending",
+        taskName: taskDetails?.name,
+        taskDescription: taskDetails?.description,
+        taskPriority: taskDetails?.priority,
+        taskDeadline: taskDetails?.deadline,
       },
     });
 
-    // TODO: Notify admins/users about the new assistance request
     console.log("Nouvelle demande d'assistance créée:", newAssistanceRequest);
     return newAssistanceRequest;
 
@@ -1098,65 +1210,86 @@ export async function createAssistanceRequest(message: string, projectId: string
   }
 }
 
-export async function createTaskRequest(
-  projectId: string,
-  name: string,
-  description: string,
-  priority: Priority,
-  deadline: Date | null,
-  comments: string | null,
-) {
-  try {
-    const currentUser = await checkRole([Role.CONSULTANT]); // Only CONSULTANTs can create task requests
+export async function respondToAssistanceRequest(requestId: string, resolution: 'resolved' | 'rejected') {
+  const currentUser = await getCurrentUser();
 
-    if (!currentUser) {
-      throw new Error("Utilisateur non authentifié ou rôle non autorisé.");
-    }
-
-    if (!name || name.trim() === '') {
-      throw new Error("Le nom de la tâche ne peut pas être vide.");
-    }
-
-    if (!description || description.trim() === '') {
-      throw new Error("La description de la tâche ne peut pas être vide.");
-    }
-
-    // Verify project exists
-    const projectExists = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true, createdById: true },
-    });
-    if (!projectExists) {
-      throw new Error("Projet spécifié introuvable.");
-    }
-
-    // Verify the current consultant is the creator of this project.
-    if (projectExists.createdById !== currentUser.id) {
-        throw new Error("Accès non autorisé: Vous ne pouvez créer de demandes de tâches que pour vos propres projets.");
-    }
-
-    const newTaskRequest = await prisma.taskRequest.create({
-      data: {
-        projectId: projectId,
-        consultantId: currentUser.id,
-        name: name,
-        description: description,
-        priority: priority,
-        deadline: deadline,
-        comments: comments,
-        status: "pending", // Default status
-      },
-    });
-
-    // TODO: Notify project collaborators/admins about the new task request
-    revalidatePath(`/project/${projectId}`);
-    console.log("Nouvelle demande de tâche créée:", newTaskRequest);
-    return newTaskRequest;
-
-  } catch (error) {
-    console.error("Erreur lors de la création de la demande de tâche:", error);
-    throw new Error(`Échec de la création de la demande de tâche: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  if (!currentUser) {
+    throw new Error("Utilisateur non authentifié.");
   }
+
+  // Seuls les USERS ou ADMINS peuvent traiter une demande d'assistance
+  if (currentUser.role !== Role.USER && currentUser.role !== Role.ADMIN) {
+    throw new Error("Accès non autorisé : seul un utilisateur avec le rôle USER ou ADMIN peut traiter une demande d'assistance.");
+  }
+
+  const assistanceRequest = await prisma.assistanceRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      project: {
+        select: {
+          id: true,
+          createdById: true,
+          users: {
+            select: {
+              userId: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!assistanceRequest) {
+    throw new Error("Demande d'assistance introuvable.");
+  }
+
+  if (assistanceRequest.status !== 'pending') {
+    throw new Error("Cette demande a déjà été traitée.");
+  }
+
+  // Si la demande est liée à un projet et que l'utilisateur n'est pas ADMIN
+  if (assistanceRequest.projectId && currentUser.role !== Role.ADMIN) {
+    const isProjectCreator = assistanceRequest.project?.createdById === currentUser.id;
+    const isCollaborator = assistanceRequest.project?.users?.some((pu) => pu.userId === currentUser.id);
+    if (!isProjectCreator && !isCollaborator) {
+      throw new Error("Accès non autorisé pour traiter cette demande d'assistance liée à ce projet.");
+    }
+  }
+
+  // Création automatique de tâche si approuvée et contient des détails
+  if (resolution === 'resolved' && assistanceRequest.taskName && assistanceRequest.projectId) {
+    await prisma.task.create({
+      data: {
+        name: assistanceRequest.taskName,
+        description: assistanceRequest.taskDescription || "",
+        priority: assistanceRequest.taskPriority || Priority.LOW,
+        deadline: assistanceRequest.taskDeadline,
+        projectId: assistanceRequest.projectId,
+        createdById: currentUser.id,
+        userId: assistanceRequest.consultantId, // Assignée au consultant par défaut
+        status: "To Do",
+      }
+    });
+  }
+
+  const updatedRequest = await prisma.assistanceRequest.update({
+    where: { id: requestId },
+    data: {
+      status: resolution,
+      resolvedById: currentUser.id,
+      resolvedAt: new Date(),
+    },
+    include: {
+      consultant: true,
+      resolvedBy: true,
+    },
+  });
+
+  if (assistanceRequest.projectId) {
+    revalidatePath(`/project/${assistanceRequest.projectId}`);
+  }
+  revalidatePath('/admin/dashboard');
+  return updatedRequest;
 }
 
 export const getProjectTasks = async (projectId: string, skip: number = 0, take: number = 5, searchTerm: string = "", sortOrder: "asc" | "desc" = "asc", statusFilter: string = "", assignedFilter: boolean = false, userEmail: string | undefined) => {
@@ -1402,391 +1535,252 @@ export async function getAllUsersForCollaboration() {
     return users;
   } catch (error) {
     console.error("Erreur lors du chargement de tous les utilisateurs pour la collaboration:", error);
-    throw new Error(`Échec du chargement des utilisateurs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Erreur lors du chargement de tous les utilisateurs pour la collaboration: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
-export async function addMultipleUsersToProject(projectId: string, userIds: string[]) {
-  const currentUser = await checkRole([Role.CONSULTANT, Role.ADMIN]); // Only consultants (project creator) and admins can add users
+export async function createComment(taskId: string, content: string, userEmail: string, parentId: string | null = null) {
+  await checkRole([Role.USER, Role.CONSULTANT, Role.ADMIN]); // Anyone can comment
 
-  if (!currentUser) {
-    throw new Error("Utilisateur non authentifié ou rôle non autorisé.");
-  }
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { id: true, createdById: true, isConsultantProject: true },
-  });
-
-  if (!project) {
-    throw new Error("Projet non trouvé.");
-  }
-
-  // A consultant can only add users to projects they created.
-  if (currentUser.role === Role.CONSULTANT && project.createdById !== currentUser.id) {
-    throw new Error("Accès non autorisé: Les consultants ne peuvent ajouter des collaborateurs qu'à leurs propres projets.");
-  }
-
-  const addedUsers: string[] = [];
-  const errors: string[] = [];
-
-  for (const userId of userIds) {
-    // Check if user exists
-    const userToAdd = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true },
+  try {
+    const existingUser = await prisma.user.findUnique({
+      where: { email: userEmail },
+      select: { id: true },
     });
 
-    if (!userToAdd) {
-      errors.push(`Utilisateur avec l'ID ${userId} introuvable.`);
-      continue;
+    if (!existingUser) {
+      throw new Error("Utilisateur non trouvé.");
     }
 
-    // Check for existing association
-    const existingAssociation = await prisma.projectUser.findUnique({
-      where: {
-        userId_projectId: {
-          userId: userToAdd.id,
-          projectId: project.id,
+    const newComment = await prisma.comment.create({
+      data: {
+        content,
+        taskId,
+        userId: existingUser.id,
+        parentId, // Pour les réponses
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, imageUrl: true } },
+        reactions: true,
+        replies: {
+          include: {
+            user: { select: { id: true, name: true, email: true, imageUrl: true } },
+            reactions: true,
+          },
         },
       },
     });
 
-    if (existingAssociation) {
-      errors.push(`Utilisateur ${userToAdd.email} est déjà associé à ce projet.`);
-      continue;
-    }
-
-    // Create association
-    await prisma.projectUser.create({
-      data: {
-        userId: userToAdd.id,
-        projectId: project.id,
-      },
-    });
-    addedUsers.push(userToAdd.email);
+    revalidatePath(`/task-details/${taskId}`);
+    return newComment;
+  } catch (error) {
+    console.error("Erreur lors de la création du commentaire :", error);
+    throw new Error(`Échec de la création du commentaire: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-
-  revalidatePath(`/project/${projectId}`);
-
-  if (errors.length > 0) {
-    return { success: false, addedUsers, errors, message: "Certains utilisateurs n'ont pas pu être ajoutés." };
-  }
-
-  return { success: true, addedUsers, message: "Collaborateurs ajoutés avec succès !" };
 }
 
-export async function addUsersToProjectByConsultant(projectInviteCode: string, userEmails: string[]) {
+export async function addMultipleUsersToProject(projectId: string, userIds: string[]) {
+  const currentUser = await checkRole([Role.ADMIN, Role.CONSULTANT]); // Only ADMIN or CONSULTANT can add multiple users
+
   try {
-    const currentUser = await checkRole([Role.ADMIN, Role.CONSULTANT]); // Only ADMIN or CONSULTANT can add multiple users
-
-    if (!currentUser) {
-      throw new Error("Utilisateur non authentifié ou rôle non autorisé.");
-    }
-
     const project = await prisma.project.findUnique({
-      where: { inviteCode: projectInviteCode },
-      select: { id: true, createdById: true, isConsultantProject: true },
+      where: { id: projectId },
+      select: { createdById: true },
     });
 
     if (!project) {
       throw new Error("Projet non trouvé.");
     }
 
-    // Check if the current user is the project creator or an ADMIN
-    const isProjectCreator = project.createdById === currentUser.id;
-    if (currentUser.role === Role.CONSULTANT && !isProjectCreator) {
-      throw new Error("Accès non autorisé: Seul le créateur du projet ou un administrateur peut inviter des collaborateurs.");
+    // If current user is a CONSULTANT, ensure they are the project creator
+    if (currentUser.role === Role.CONSULTANT && project.createdById !== currentUser.id) {
+      throw new Error("Accès non autorisé : Les consultants ne peuvent ajouter des utilisateurs qu'à leurs propres projets.");
     }
 
-    const addedUsers: string[] = [];
-    const errors: string[] = [];
-
-    for (const email of userEmails) {
-      const userToAdd = await prisma.user.findUnique({
-        where: { email },
-        select: { id: true, email: true },
-      });
-
-      if (!userToAdd) {
-        errors.push(`Utilisateur avec l'email ${email} introuvable.`);
-        continue;
-      }
-
-      const existingAssociation = await prisma.projectUser.findUnique({
-        where: {
-          userId_projectId: {
-            userId: userToAdd.id,
-            projectId: project.id,
-          },
-        },
-      });
-
-      if (existingAssociation) {
-        errors.push(`Utilisateur ${email} est déjà associé à ce projet.`);
-        continue;
-      }
-
-      await prisma.projectUser.create({
-        data: {
-          userId: userToAdd.id,
-          projectId: project.id,
-        },
-      });
-      addedUsers.push(email);
-    }
-
-    revalidatePath(`/project/${project.id}`);
-
-    if (errors.length > 0) {
-      return { success: false, addedUsers, errors, message: "Certains utilisateurs n'ont pas pu être ajoutés." };
-    }
-
-    return { success: true, addedUsers, message: "Collaborateurs ajoutés avec succès !" };
-  } catch (error) {
-    console.error(error);
-    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-      return { success: false, addedUsers: [], errors: [], message: "Erreur réseau: Impossible d'ajouter les utilisateurs au projet." };
-    }
-    return { success: false, addedUsers: [], errors: [], message: "Erreur lors de l'ajout des utilisateurs au projet." };
-  }
-}
-
-export async function updateTaskStatusAutomatically(task: Task) {
-  // Convertir le type Prisma.Task vers le type Task étendu si nécessaire
-  const extendedTask: Task = task as Task; // Assurez-vous que l'objet tâche a toutes les propriétés requises
-
-  if (extendedTask.status === "Done") {
-    return extendedTask; // Ne pas modifier une tâche déjà terminée
-  }
-
-  if (!extendedTask.deadline) {
-    return extendedTask; // Pas de deadline, pas de changement automatique de statut
-  }
-
-  const now = new Date();
-  const deadlineDate = new Date(extendedTask.deadline);
-  const diffTime = deadlineDate.getTime() - now.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-  let newStatus = extendedTask.status;
-
-  if (diffDays < 0) {
-    newStatus = "Late"; // Deadline dépassée
-  } else if (diffDays <= 3 && extendedTask.status === "To Do") {
-    newStatus = "In Progress"; // Moins de 3 jours avant la deadline, et toujours "To Do"
-  }
-
-  if (newStatus !== extendedTask.status) {
-    try {
-      const updatedTask = await prisma.task.update({
-        where: { id: extendedTask.id },
-        data: { status: newStatus },
-      });
-      extendedTask.status = updatedTask.status; // Mettre à jour le statut de l'objet en mémoire
-      revalidatePath(`/task-details/${extendedTask.id}`);
-      revalidatePath(`/project/${extendedTask.projectId}`);
-    } catch (error) {
-      console.error(`Erreur lors de la mise à jour automatique du statut de la tâche ${extendedTask.id}:`, error);
-    }
-  }
-
-  return extendedTask;
-}
-
-export async function createComment(taskId: string, userId: string, content: string, parentId: string | null = null) {
-  try {
-    const comment = await prisma.comment.create({
-      data: {
-        taskId,
-        userId,
-        content,
-        parentId,
-      },
-      include: {
-        user: { select: { id: true, name: true, email: true, imageUrl: true, role: true, approved: true, restricted: true } },
-        reactions: { include: { user: { select: { id: true, name: true, email: true, role: true, approved: true, restricted: true } } } },
-        // replies: { include: { user: { select: { id: true, name: true, email: true, imageUrl: true } }, reactions: { include: { user: { select: { id: true, name: true, email: true } } } } }, orderBy: { createdAt: 'asc' } }, // Removed recursive replies
-      },
+    const existingProjectUsers = await prisma.projectUser.findMany({
+      where: { projectId, userId: { in: userIds } },
+      select: { userId: true },
     });
-    return comment;
+
+    const existingUserIds = new Set(existingProjectUsers.map(pu => pu.userId));
+    const usersToAdd = userIds.filter(id => !existingUserIds.has(id));
+
+    if (usersToAdd.length > 0) {
+      await prisma.projectUser.createMany({
+        data: usersToAdd.map(userId => ({
+          projectId,
+          userId,
+        })),
+        skipDuplicates: true, // Skip if a user is already associated
+      });
+    }
+
+    revalidatePath(`/project/${projectId}`);
+    return { success: true, message: `${usersToAdd.length} utilisateurs ajoutés au projet avec succès.` };
   } catch (error) {
-    console.error('Erreur lors de la création du commentaire:', error);
-    throw new Error('Impossible de créer le commentaire.');
+    console.error("Erreur lors de l'ajout de plusieurs utilisateurs au projet :", error);
+    throw new Error(`Échec de l'ajout de plusieurs utilisateurs au projet: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
 export async function getCommentsForTask(taskId: string) {
   try {
     const comments = await prisma.comment.findMany({
-      where: {
-        taskId,
-        parentId: null, // Only fetch top-level comments
-      },
+      where: { taskId, parentId: null }, // Fetch top-level comments
       include: {
-        user: { select: { id: true, name: true, email: true, imageUrl: true, role: true, approved: true, restricted: true } },
-        reactions: {
-          include: { user: { select: { id: true, name: true, email: true, role: true, approved: true, restricted: true } } },
-        },
+        user: { select: { id: true, name: true, email: true, imageUrl: true } },
+        reactions: true,
         replies: {
           include: {
-            user: { select: { id: true, name: true, email: true, imageUrl: true, role: true, approved: true, restricted: true } },
-            reactions: {
-              include: { user: { select: { id: true, name: true, email: true, role: true, approved: true, restricted: true } } },
-            },
-            replies: { // Recursive replies
-              include: {
-                user: { select: { id: true, name: true, email: true, imageUrl: true, role: true, approved: true, restricted: true } },
-                reactions: {
-                  include: { user: { select: { id: true, name: true, email: true, role: true, approved: true, restricted: true } } },
-                },
-              },
-              orderBy: { createdAt: 'asc' },
-            },
+            user: { select: { id: true, name: true, email: true, imageUrl: true } },
+            reactions: true,
           },
           orderBy: { createdAt: 'asc' },
         },
       },
-      orderBy: {
-        createdAt: 'asc',
-      },
+      orderBy: { createdAt: 'asc' },
     });
+
     return comments;
   } catch (error) {
-    console.error(`Erreur lors de la récupération des commentaires pour la tâche ${taskId}:`, error);
-    throw new Error('Impossible de récupérer les commentaires.');
-  }
-}
-
-export async function updateComment(commentId: string, content: string) {
-  const user = await getCurrentUser();
-  if (!user) { throw new Error("Utilisateur non authentifié."); }
-
-  try {
-    const existingComment = await prisma.comment.findUnique({
-      where: { id: commentId },
-      select: { userId: true, taskId: true },
-    });
-
-    if (!existingComment) { throw new Error("Commentaire non trouvé."); }
-
-    // Only the comment creator can update
-    if (existingComment.userId !== user.id) {
-      throw new Error("Accès non autorisé : vous n'êtes pas l'auteur de ce commentaire.");
-    }
-
-    const comment = await prisma.comment.update({
-      where: { id: commentId },
-      data: { content },
-      include: {
-        user: { select: { id: true, name: true, email: true, imageUrl: true } },
-        reactions: { include: { user: { select: { id: true, name: true, email: true } } } },
-        // replies: { include: { user: { select: { id: true, name: true, email: true, imageUrl: true } }, reactions: { include: { user: { select: { id: true, name: true, email: true } } } } }, orderBy: { createdAt: 'asc' } }, // Removed recursive replies
-      },
-    });
-    return comment;
-  } catch (error) {
-    console.error('Erreur lors de la mise à jour du commentaire:', error);
-    throw new Error('Impossible de mettre à jour le commentaire.');
-  }
-}
-
-export async function deleteComment(commentId: string) {
-  const user = await getCurrentUser();
-  if (!user) { throw new Error("Utilisateur non authentifié."); }
-
-  try {
-    const existingComment = await prisma.comment.findUnique({
-      where: { id: commentId },
-      select: { userId: true, taskId: true },
-    });
-
-    if (!existingComment) { throw new Error("Commentaire non trouvé."); }
-
-    // Only the comment creator or an ADMIN can delete
-    if (user.role !== Role.ADMIN && existingComment.userId !== user.id) {
-      throw new Error("Accès non autorisé : vous n'êtes pas l'auteur de ce commentaire ou un administrateur.");
-    }
-
-    const comment = await prisma.comment.delete({
-      where: { id: commentId },
-    });
-    return comment;
-  } catch (error) {
-    console.error('Erreur lors de la suppression du commentaire:', error);
-    throw new Error('Impossible de supprimer le commentaire.');
+    console.error("Erreur lors du chargement des commentaires :", error);
+    throw new Error(`Échec du chargement des commentaires: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
 export async function toggleCommentReaction(commentId: string, userId: string, reactionType: ReactionType) {
+  await checkRole([Role.USER, Role.CONSULTANT, Role.ADMIN]); // Anyone can react to a comment
+
   try {
-    // Find if the user has any existing reaction on this comment
-    const existingReaction = await prisma.commentReaction.findFirst({
-      where: { commentId, userId },
+    const existingReaction = await prisma.commentReaction.findUnique({
+      where: {
+        userId_commentId: {
+          userId,
+          commentId,
+        },
+      },
     });
 
     if (existingReaction) {
-      if (existingReaction.type === reactionType) {
-        // User clicked on the same reaction type again, so remove it (toggle off)
-        await prisma.commentReaction.delete({
-          where: { id: existingReaction.id },
-        });
-      } else {
-        // User clicked on the opposite reaction type, so update the existing one
-        await prisma.commentReaction.update({
-          where: { id: existingReaction.id },
-          data: { type: reactionType },
-        });
-      }
+      // If a reaction exists, delete it (toggle off)
+      await prisma.commentReaction.delete({
+        where: {
+          userId_commentId: {
+            userId,
+            commentId,
+          },
+        },
+      });
     } else {
-      // No existing reaction, so create a new one
+      // If no reaction exists, create one
       await prisma.commentReaction.create({
         data: {
           commentId,
           userId,
-          type: reactionType,
+          type: reactionType, // Use the provided reactionType
         },
       });
     }
 
-    const updatedComment = await prisma.comment.findUnique({
-      where: { id: commentId },
-      include: {
-        user: { select: { id: true, name: true, email: true, imageUrl: true } },
-        reactions: { include: { user: { select: { id: true, name: true, email: true } } } },
-      },
-    });
-    return updatedComment;
+    // revalidatePath(`/task-details/${commentId}`); // Revalidate the task details page to show updated reactions
+    return { success: true };
   } catch (error) {
-    console.error("Erreur lors de l'ajout/modification/suppression de la réaction:", error);
-    throw new Error("Impossible d'ajouter/modifier/supprimer la réaction.");
+    console.error("Erreur lors de la gestion de la réaction au commentaire :", error);
+    throw new Error(`Échec de la gestion de la réaction au commentaire: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
-export async function removeCommentReaction(reactionId: string) {
-  const user = await getCurrentUser();
-  if (!user) { throw new Error("Utilisateur non authentifié."); }
+export async function updateComment(commentId: string, newContent: string) {
+  const currentUser = await checkRole([Role.USER, Role.CONSULTANT, Role.ADMIN]); // Anyone can edit their own comment, or if they have higher roles
 
   try {
-    const existingReaction = await prisma.commentReaction.findUnique({
-      where: { id: reactionId },
-      select: { userId: true, commentId: true },
+    const existingComment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      select: { userId: true, taskId: true, task: { select: { createdById: true } } },
     });
 
-    if (!existingReaction) { throw new Error("Réaction non trouvée."); }
-
-    // Only the reaction creator or an ADMIN can remove
-    if (user.role !== Role.ADMIN && existingReaction.userId !== user.id) {
-      throw new Error("Accès non autorisé : vous n'êtes pas l'auteur de cette réaction ou un administrateur.");
+    if (!existingComment) {
+      throw new Error("Commentaire non trouvé.");
     }
 
-    const reaction = await prisma.commentReaction.delete({
-      where: { id: reactionId },
+    const isCommentCreator = existingComment.userId === currentUser.id;
+    const isTaskCreator = existingComment.task.createdById === currentUser.id;
+
+    if (currentUser.role !== Role.ADMIN && !isCommentCreator && !isTaskCreator) {
+      throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni le créateur du commentaire, ni le créateur de la tâche.");
+    }
+
+    await prisma.comment.update({
+      where: { id: commentId },
+      data: { content: newContent },
     });
-    revalidatePath(`/task-details/${reaction.commentId}`);
-    return reaction;
+
+    revalidatePath(`/task-details/${existingComment.taskId}`);
+    return { success: true };
   } catch (error) {
-    console.error("Erreur lors de la suppression de la réaction:", error);
-    throw new Error("Impossible de supprimer la réaction.");
+    console.error("Erreur lors de la mise à jour du commentaire :", error);
+    throw new Error(`Échec de la mise à jour du commentaire: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+}
+
+export async function deleteComment(commentId: string) {
+  const currentUser = await checkRole([Role.USER, Role.CONSULTANT, Role.ADMIN]); // Anyone can delete their own comment, or if they have higher roles
+
+  try {
+    const commentToDelete = await prisma.comment.findUnique({
+      where: { id: commentId },
+      select: { userId: true, taskId: true, task: { select: { createdById: true } } },
+    });
+
+    if (!commentToDelete) {
+      throw new Error("Commentaire non trouvé.");
+    }
+
+    const isCommentCreator = commentToDelete.userId === currentUser.id;
+    const isTaskCreator = commentToDelete.task.createdById === currentUser.id;
+
+    if (currentUser.role !== Role.ADMIN && !isCommentCreator && !isTaskCreator) {
+      throw new Error("Accès non autorisé : vous n'êtes ni administrateur, ni le créateur du commentaire, ni le créateur de la tâche.");
+    }
+
+    await prisma.comment.delete({
+      where: { id: commentId },
+    });
+
+    revalidatePath(`/task-details/${commentToDelete.taskId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("Erreur lors de la suppression du commentaire :", error);
+    throw new Error(`Échec de la suppression du commentaire: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// TODO: Implémenter la logique réelle de mise à jour automatique du statut de la tâche
+async function updateTaskStatusAutomatically(task: Task) {
+  const now = new Date();
+  // Ne pas mettre à jour le statut si la tâche est déjà "Done" ou "Cancelled"
+  if (task.status === "Done" || task.status === "Cancelled") {
+    return task;
+  }
+
+  // Vérifier si la deadline est dépassée et la priorité n'est pas déjà 'Late'
+  if (task.deadline && task.deadline < now && task.priority !== Priority.LATE) {
+    try {
+      const updatedTask = await prisma.task.update({
+        where: { id: task.id },
+        data: {
+          priority: Priority.LATE,
+          // status: "Late" // REMOVED: Keep existing status (e.g. "To Do") but mark priority as Late
+        },
+      });
+      console.log(`[updateTaskStatusAutomatically] Tâche ${task.id} priorité mise à jour à 'Late'.`);
+      return updatedTask;
+    } catch (error) {
+      console.error(`Erreur lors de la mise à jour automatique de la tâche ${task.id}:`, error);
+      // En cas d'erreur, retourner la tâche originale pour éviter de bloquer
+      return task;
+    }
+  }
+  // Si aucune mise à jour n'est nécessaire, retourner la tâche originale
+  return task;
 }

@@ -23,20 +23,63 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  const handlePromote = async (userId: string, currentRole: Role) => {
+    setActionLoading(userId);
+    try {
+      let newRole: Role;
+      if (currentRole === Role.USER) {
+        newRole = Role.CONSULTANT;
+      } else if (currentRole === Role.CONSULTANT) {
+        newRole = Role.ADMIN;
+      } else {
+        newRole = Role.USER;
+      }
+
+      const res = await fetch("/api/admin/promote-user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          role: newRole,
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        console.error('API Error:', error);
+        throw new Error(error.error || "Erreur lors de la mise à jour du rôle");
+      }
+
+      toast.success(`Rôle mis à jour en ${newRole}`);
+      await fetchData();
+    } catch (error) {
+      console.error("Erreur:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Erreur lors de la mise à jour du rôle"
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const fetchData = async () => {
     try {
       setRefreshing(true);
+
+      // Récupérer d'abord l'utilisateur actuel
+      let fetchedCurrentUser: User | null = null;
+      const userResponse = await fetch("/api/user/role");
+      if (userResponse.ok) {
+        const userData = await userResponse.json();
+        fetchedCurrentUser = userData.user;
+        setCurrentUser(fetchedCurrentUser);
+      }
+
+      // Ensuite, récupérer tous les utilisateurs
       const res = await fetch("/api/admin/users");
       if (!res.ok) throw new Error("Erreur lors du chargement des utilisateurs");
       const data = await res.json();
       setUsers(data.users || []);
-
-      // Get current user
-      const response = await fetch("/api/user/role");
-      if (response.ok) {
-        const userData = await response.json();
-        setCurrentUser(userData.user);
-      }
     } catch (error) {
       console.error("Erreur:", error);
       toast.error("Erreur lors du chargement des utilisateurs");
@@ -108,7 +151,7 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
   };
 
   const restrictedUsers = users.filter((u) => u.restricted);
-  const activeUsers = users.filter((u) => !u.restricted);
+  const activeUsers = users.filter((u) => !u.restricted && u.id !== currentUser?.id);
 
   return (
     <Wrapper userRole={userRole}>
@@ -116,16 +159,15 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
         {/* Back Button */}
         <Link
           href="/admin"
-          className="inline-flex items-center gap-2 mb-6 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 mb-6 px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-colors"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Retour à l&apos;administration
+          <ArrowLeft className="w-6 h-6" />
         </Link>
 
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <Users className="w-8 h-8 text-blue-600" />
-            <h1 className="text-4xl font-bold">Gestion des Utilisateurs</h1>
+            <Users className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+            <h1 className="text-4xl font-bold text-base-content">Gestion des Utilisateurs</h1>
           </div>
           <button
             onClick={fetchData}
@@ -140,38 +182,38 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
             <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-600" />
-              <span className="text-gray-700">Utilisateurs actifs:</span>
-              <span className="font-bold text-2xl text-blue-600">{activeUsers.length}</span>
+              <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-base-content">Utilisateurs actifs:</span>
+              <span className="font-bold text-2xl text-blue-600 dark:text-blue-400">{activeUsers.length}</span>
             </div>
           </div>
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
             <div className="flex items-center gap-2">
-              <Lock className="w-5 h-5 text-red-600" />
-              <span className="text-gray-700">Utilisateurs restreints:</span>
-              <span className="font-bold text-2xl text-red-600">{restrictedUsers.length}</span>
+              <Lock className="w-5 h-5 text-red-600 dark:text-red-400" />
+              <span className="text-base-content">Utilisateurs restreints:</span>
+              <span className="font-bold text-2xl text-red-600 dark:text-red-400">{restrictedUsers.length}</span>
             </div>
           </div>
         </div>
 
         {/* Active Users */}
         <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-            <Shield className="w-6 h-6 text-blue-600" />
+          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-base-content">
+            <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             Utilisateurs Actifs
           </h2>
 
           {activeUsers.length === 0 ? (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-              <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-500">Aucun utilisateur actif</p>
+            <div className="bg-base-200 border border-base-300 rounded-lg p-8 text-center">
+              <AlertCircle className="w-12 h-12 text-base-content/50 mx-auto mb-2" />
+              <p className="text-base-content/70">Aucun utilisateur actif</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {activeUsers.map((user) => (
-                <div key={user.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex flex-col items-start gap-3 hover:shadow-md transition-shadow">
+                <div key={user.id} className="bg-base-200 border border-base-300 rounded-lg p-4 shadow-sm flex flex-col items-start gap-3 hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-3 w-full">
                     {user.imageUrl && (
                       <Image
@@ -179,29 +221,50 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
                         alt={user.name}
                         width={48}
                         height={48}
-                        className="rounded-full flex-shrink-0"
+                        className="rounded-full flex-shrink-0 w-12 h-12 object-cover"
                       />
                     )}
                     <div className="flex-1">
-                      <p className="font-semibold text-gray-900 text-lg">{user.name}</p>
-                      <p className="text-sm text-gray-500">{user.email}</p>
+                      <p className="font-semibold text-base-content text-lg">{user.name}</p>
+                      <p className="text-sm text-base-content/70">{user.email}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <span
                       className={`px-3 py-1 text-xs font-semibold rounded-full ${
                         user.role === Role.ADMIN
-                          ? "bg-purple-100 text-purple-800"
-                          : "bg-blue-100 text-blue-800"
+                          ? "bg-purple-500/20 text-purple-600 dark:text-purple-400"
+                          : user.role === Role.CONSULTANT
+                          ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
+                          : "bg-blue-500/20 text-blue-600 dark:text-blue-400"
                       }`}
                     >
                       {user.role}
                     </span>
-                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                    <span className="px-3 py-1 bg-green-500/20 text-green-600 dark:text-green-400 text-xs font-semibold rounded-full">
                       Actif
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-4 w-full">
+                    {user.id !== currentUser?.id && ( // Empêche l'admin de modifier son propre rôle
+                      <button
+                        onClick={() => handlePromote(user.id, user.role)}
+                        disabled={actionLoading === user.id}
+                        className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 transition-colors text-sm flex-grow sm:flex-grow-0"
+                        title="Changer le rôle de l'utilisateur"
+                      >
+                        {actionLoading === user.id ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Shield className="w-4 h-4" />
+                        )}
+                        {user.role === Role.USER
+                          ? "Promouvoir en Consultant"
+                          : user.role === Role.CONSULTANT
+                          ? "Promouvoir en Admin"
+                          : "Rétrograder en Utilisateur"}
+                      </button>
+                    )}
                     <button
                       onClick={() => handleRestrict(user.id, user.restricted)}
                       disabled={
@@ -242,8 +305,8 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
         {/* Restricted Users */}
         {restrictedUsers.length > 0 && (
           <div>
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <Lock className="w-6 h-6 text-red-600" />
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-base-content">
+              <Lock className="w-6 h-6 text-red-600 dark:text-red-400" />
               Utilisateurs Restreints
             </h2>
 
@@ -251,7 +314,7 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
               {restrictedUsers.map(user => (
                 <div
                   key={user.id}
-                  className="bg-red-50 border-2 border-red-200 rounded-lg p-4 hover:shadow-lg transition-all flex flex-col items-start gap-3"
+                  className="bg-red-500/10 border-2 border-red-500/30 rounded-lg p-4 hover:shadow-lg transition-all flex flex-col items-start gap-3"
                 >
                   <div className="flex items-center gap-3 w-full">
                     {user.imageUrl && (
@@ -260,25 +323,27 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
                         alt={user.name}
                         width={48}
                         height={48}
-                        className="rounded-full flex-shrink-0"
+                        className="rounded-full flex-shrink-0 w-12 h-12 object-cover"
                       />
                     )}
                     <div className="flex-1">
-                      <p className="font-semibold text-lg text-gray-900">{user.name}</p>
-                      <p className="text-sm text-gray-600 mb-2">{user.email}</p>
+                      <p className="font-semibold text-lg text-base-content">{user.name}</p>
+                      <p className="text-sm text-base-content/70 mb-2">{user.email}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <span
                       className={`px-3 py-1 text-xs font-semibold rounded-full ${
                         user.role === Role.ADMIN
-                          ? "bg-purple-100 text-purple-800"
-                          : "bg-blue-100 text-blue-800"
+                          ? "bg-purple-500/20 text-purple-600 dark:text-purple-400"
+                          : user.role === Role.CONSULTANT
+                          ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
+                          : "bg-blue-500/20 text-blue-600 dark:text-blue-400"
                       }`}
                     >
                       {user.role}
                     </span>
-                    <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded-full">
+                    <span className="px-3 py-1 bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold rounded-full">
                       Restreint
                     </span>
                   </div>
@@ -328,19 +393,19 @@ export default function ManageUsersClient({ userRole }: ManageUsersClientProps) 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="bg-base-100 border border-base-300 rounded-lg shadow-xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
-              <AlertCircle className="w-6 h-6 text-red-600" />
-              <h3 className="text-xl font-bold">Confirmer la suppression</h3>
+              <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              <h3 className="text-xl font-bold text-base-content">Confirmer la suppression</h3>
             </div>
-            <p className="text-gray-600 mb-6">
+            <p className="text-base-content/70 mb-6">
               Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible et
               supprimera également tous ses projets et tâches.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
+                className="px-4 py-2 bg-base-200 text-base-content rounded hover:bg-base-300 transition-colors"
               >
                 Annuler
               </button>

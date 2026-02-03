@@ -18,8 +18,10 @@ interface TaskCardMobileProps {
     onDelete?: (id: string) => void
 }
 
-const TaskCardMobile: FC<TaskCardMobileProps> = ({ task, index, email, onDelete, userRole }) => {
-    const canDelete = userRole === Role.ADMIN || (userRole === Role.USER && (email == task.createdBy?.email || task.project?.users?.some(pu => pu.user.email === email)));
+const TaskCardMobile: FC<TaskCardMobileProps> = ({ task, index, email, onDelete, userRole, project }) => {
+    const isConsultantProject = project?.isConsultantProject;
+    const isCollaborator = project?.users?.some(pu => pu.user.email === email);
+    const canDelete = userRole === Role.ADMIN || (userRole === Role.USER && !isConsultantProject && (email === task.createdBy?.email || isCollaborator));
 
     const handleDeleteClick = () => {
         if (onDelete) {
@@ -28,6 +30,12 @@ const TaskCardMobile: FC<TaskCardMobileProps> = ({ task, index, email, onDelete,
     }
 
     const getPriorityBadgeClass = (priority: Priority | string) => {
+        if (task.status === "Done") {
+            return 'badge-success'; // Si la tâche est terminée, la priorité est "Terminé"
+        }
+        if (task.status === "Late") {
+            return 'badge-error';
+        }
         switch (priority) {
             case Priority.HIGH:
                 return 'badge-error';
@@ -35,14 +43,18 @@ const TaskCardMobile: FC<TaskCardMobileProps> = ({ task, index, email, onDelete,
                 return 'badge-warning';
             case Priority.LOW:
                 return 'badge-info';
-            case "Late": // Nouveau statut "Late"
-                return 'badge-error-content text-white'; // Ou une autre classe appropriée pour "Late"
             default:
                 return 'badge-neutral';
         }
     };
 
     const getPriorityText = (priority: Priority | string) => {
+        if (task.status === "Done") {
+            return 'Terminé'; // Si la tâche est terminée, la priorité est "Terminé"
+        }
+        if (task.status === "Late") {
+            return 'En retard';
+        }
         switch (priority) {
             case Priority.HIGH:
                 return 'Haute';
@@ -50,8 +62,6 @@ const TaskCardMobile: FC<TaskCardMobileProps> = ({ task, index, email, onDelete,
                 return 'Moyenne';
             case Priority.LOW:
                 return 'Basse';
-            case "Late":
-                return 'En retard';
             default:
                 return 'Non définie';
         }
@@ -63,14 +73,18 @@ const TaskCardMobile: FC<TaskCardMobileProps> = ({ task, index, email, onDelete,
                 <div className='flex items-start justify-between'>
                     <div className='flex items-center gap-2'>
                         <div className='badge badge-ghost text-xs'>#{index + 1}</div>
-                        <div className={`badge text-xs mb-2  font-semibold
-                           ${task.status == "To Do" ? "bg-red-200 font-semibold" : ""}      
-                           ${task.status == "In Progress" ? "bg-yellow-200 font-semibold" : ""}                     
-                            ${task.status == "Done" ? "bg-green-200 font-semibold" : ""}   
+                        <div className={`badge text-xs mb-2 font-semibold
+                           ${task.status === "To Do" ? "bg-blue-200 text-blue-800" : ""}
+                           ${task.status === "In Progress" ? "bg-yellow-200 text-yellow-800" : ""}
+                           ${task.status === "Done" ? "bg-green-200 text-green-800" : ""}
+                           ${task.status === "Late" ? "bg-red-500 text-white" : ""}
+                           ${!task.status || (task.status !== "To Do" && task.status !== "In Progress" && task.status !== "Done" && task.status !== "Late") ? "bg-gray-200 text-gray-800" : ""}
                         `}>
-                            {task.status == "To Do" && 'A faire'}
-                            {task.status == "In Progress" && 'En cours'}
-                            {task.status == "Done" && 'Terminé'}
+                            {task.status === "To Do" && 'A faire'}
+                            {task.status === "In Progress" && 'En cours'}
+                            {task.status === "Done" && 'Terminé'}
+                            {task.status === "Late" && 'En retard'}
+                            {!task.status || (task.status !== "To Do" && task.status !== "In Progress" && task.status !== "Done" && task.status !== "Late") && 'Non défini'}
                         </div>
                     </div>
                 </div>

@@ -15,20 +15,94 @@ import 'react-quill-new/dist/quill.snow.css';
 import { toast } from 'react-hot-toast';
 import { addPendingChange, getProjectById, addTask as addTaskToIdb, Task as IdbTask } from "@/lib/idb";
 import { Task, ExtendedUser } from '@/type';
+// import type Quill from 'quill'; // Supprimer l'importation de Quill
+
+// import Quill from 'quill'; // Déplacer l'importation de Quill
+// interface QuillIcons { [key: string]: string; }
+// const icons = Quill.import('ui/icons') as QuillIcons;
+// icons['file'] = '<i class="fa fa-paperclip"></i>'; // Déplacer la configuration des icônes
 
 const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
+    // const quillRef = useRef<InstanceType<typeof ReactQuill> | null>(null); // Supprimer la référence quillRef
+
+    // const [uploadedFiles, setUploadedFiles] = useState<{ name: string, url: string }[]>([]); // Supprimer l'état pour les fichiers téléchargés
+    const [attachments, setAttachments] = useState<{ name: string; url: string }[]>([]); // Nouvel état pour les pièces jointes
+
+    useEffect(() => {
+        // Importation dynamique de Quill côté client
+        import('quill').then(QuillModule => {
+          const Quill = QuillModule.default;
+          interface QuillIcons { [key: string]: string; }
+          const icons = Quill.import('ui/icons') as QuillIcons;
+          icons['file'] = '<i class="fa fa-paperclip"></i>';
+        });
+      }, []);
+
+    const handleFileUpload = () => {
+        console.log('handleFileUpload a été appelée.'); // Nouveau log
+        const input = document.createElement('input');
+        input.setAttribute('type', 'file');
+        input.setAttribute('accept', '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx');
+        input.click();
+        console.log('input.click() a été appelé.'); // Nouveau log
+
+        input.onchange = async () => {
+            console.log('Événement onchange déclenché.');
+            console.log('input.files:', input.files); // Nouveau log
+            const file = input.files?.[0];
+            if (file) {
+                console.log('Fichier sélectionné:', file.name, file.type, file.size, 'octets');
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    console.log('Envoi du fichier à l\'API:', '/api/user/upload-file');
+                    const response = await fetch('/api/user/upload-file', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Upload failed: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    const fileUrl = data.url;
+
+                    console.log('Fichier téléchargé. URL:', fileUrl);
+
+                    // Mettre à jour l'état attachments
+                    setAttachments(prev => [...prev, { name: file.name, url: fileUrl }]); // Ajouter le nouveau fichier
+                    console.log('attachments mis à jour:', [...attachments, { name: file.name, url: fileUrl }]); // Nouveau log
+                    toast.success('Fichier téléchargé avec succès.');
+
+                    // Supprimer toutes les logiques d'insertion dans Quill
+
+                } catch (error) {
+                    console.error('Error uploading file:', error);
+                    toast.error("Erreur lors du téléchargement du fichier.");
+                }
+            }
+        };
+    };
+
     const modules = {
-        toolbar: [
-            [{ 'header': [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ 'font': [] }],
-            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-            [{ 'color': [] }, { 'background': [] }],
-            ['blockquote', 'code-block'],
-            ['link', 'image'],
-            ['clean']
-        ]
+        toolbar: {
+            container: [
+                [{ 'header': [1, 2, 3, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ 'font': [] }],
+                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                [{ 'color': [] }, { 'background': [] }],
+                ['blockquote', 'code-block'],
+                ['link', 'file', 'image'], // Déplacé le bouton de fichier avant l'image
+                ['clean']
+            ],
+            handlers: {
+                file: handleFileUpload,
+            },
+        }
     };
 
     const { user, role } = useSupabaseUserWithRole();
@@ -85,7 +159,7 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                 }
             } else {
                 // Fetch from network
-                currentProject = await getProjectInfo(projectId, true);
+                currentProject = await getProjectInfo(projectId, true) as Project | null;
                 if (currentProject) {
                     const allProjectUsers = await getProjectUsers(projectId);
                     // Filtrer les consultants de la liste des utilisateurs assignables
@@ -124,6 +198,7 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const assignableUsers = usersProject.filter(u => u.id !== user?.id && u.role !== Role.CONSULTANT);
     const showAssignTask = assignableUsers.length > 0; // Show if there's at least one other assignable user
 
+
     const createTaskOffline = async (name: string, description: string, deadline: Date | null, projectId: string, createdByEmail: string, assignToEmail: string | undefined, offlineTempId: string) => {
         const newIdbTask: IdbTask = {
             id: offlineTempId,
@@ -137,6 +212,9 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             updatedAt: new Date(),
             priority: Priority.LOW,
             deadline,
+            // attachmentName: null, // Supprimé
+            // attachmentUrl: null,  // Supprimé
+            attachments: attachments.map(att => ({ ...att, id: Date.now().toString(), taskId: offlineTempId, uploadedById: createdByEmail, createdAt: new Date() })), // Inclure les pièces jointes
             comments: null,
             solutionDescription: null,
         };
@@ -175,14 +253,25 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
         try {
             const offlineTempId = `offline-task-${Date.now()}`;
+            const userToAssignEmail = selectedUser?.email || email; // Utiliser l'email de l'utilisateur sélectionné ou celui du créateur
+
             if (typeof window !== 'undefined' && !navigator.onLine) {
                 // Offline task creation
-                await createTaskOffline(name, description, deadline, projectId, email, selectedUser?.email, offlineTempId);
+                await createTaskOffline(name, description, deadline, projectId, email, userToAssignEmail, offlineTempId);
                 toast.success('Tâche créée hors ligne et sera synchronisée !');
                 rooter.push(`/project/${projectId}`);
             } else {
                 // Online task creation
-                await createTask(name, description, calculatedPriority, deadline, projectId, email, selectedUser?.email);
+                await createTask(
+                    name,
+                    description,
+                    calculatedPriority,
+                    deadline,
+                    attachments, // Passer le tableau de pièces jointes
+                    projectId,
+                    email,
+                    userToAssignEmail
+                );
                 toast.success('Tâche créée avec succès !');
                 rooter.push(`/project/${projectId}`);
             }
@@ -248,6 +337,23 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                 }}
                             />
                         </div>
+                        {attachments.length > 0 && (
+                            <div className="mt-4 p-2 bg-base-200 rounded-md"> {/* Remplacer la bordure de débogage par un style plus propre */}
+                                <span className='badge whitespace-nowrap'>
+                                    Pièces jointes
+                                </span>
+                                {attachments.map((att, index) => (
+                                  <div key={index} className="flex items-center mt-2">
+                                    <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline ml-2">
+                                        {att.name}
+                                    </a>
+                                    <button type="button" className="btn btn-xs btn-outline btn-error ml-2" onClick={() => setAttachments(prev => prev.filter((_, i) => i !== index))}>
+                                      Supprimer
+                                    </button>
+                                  </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <div className='md:w-3/4 mt-4 md:mt-0 md:ml-4 '>
                         <div className='flex flex-col justify-between w-full'>
@@ -259,6 +365,7 @@ const Page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                 onChange={(e) => setName(e.target.value)}
                             />
                             <ReactQuill
+                                // ref={quillRef} // Supprimer la prop ref
                                 placeholder='Décrivez la tâche'
                                 value={description}
                                 modules={modules}

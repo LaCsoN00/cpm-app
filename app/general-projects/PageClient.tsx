@@ -218,7 +218,6 @@ const PageClient = ({ userRole }: PageClientProps) => {
         if (email) {
             const initializeProjects = async () => {
                 await syncPendingChanges();
-                fetchProjects(email);
             };
             initializeProjects();
         }

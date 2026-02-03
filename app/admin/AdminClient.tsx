@@ -58,7 +58,7 @@ export default function AdminClient({}: AdminClientProps) {
   return (
     <Wrapper userRole={Role.ADMIN}>
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Administration</h1>
+        <h1 className="text-3xl font-bold mb-6 text-base-content">Administration</h1>
 
         {/* Navigation Tabs */}
         <div className="grid grid-cols-1 md:flex gap-4 mb-6">
@@ -85,9 +85,9 @@ export default function AdminClient({}: AdminClientProps) {
           </Link>
         </div>
         
-        <div className="bg-base-100 p-6 rounded-lg shadow-lg">
+        <div className="bg-base-100 p-6 rounded-lg shadow-lg border border-base-300">
           <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-4 sm:gap-0">
-            <h2 className="text-xl font-semibold">Utilisateurs</h2>
+            <h2 className="text-xl font-semibold text-base-content">Utilisateurs</h2>
             <button
               onClick={fetchData}
               disabled={refreshing}
@@ -101,8 +101,8 @@ export default function AdminClient({}: AdminClientProps) {
           
           {/* Remplacement du tableau par des cartes pour mobile */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {users.map((user) => (
-              <div key={user.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex flex-col items-start gap-3 hover:shadow-md transition-shadow">
+            {users.filter(user => user.id !== currentUser?.id).map((user) => (
+              <div key={user.id} className="bg-base-200 border border-base-300 rounded-lg p-4 shadow-sm flex flex-col items-start gap-3 hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-3 w-full">
                   {user.imageUrl && (
                     <Image
@@ -114,34 +114,55 @@ export default function AdminClient({}: AdminClientProps) {
                     />
                   )}
                   <div className="flex-1">
-                    <p className="font-semibold text-gray-900 text-lg">{user.name}</p>
-                    <p className="text-sm text-gray-500">{user.email}</p>
+                    <p className="font-semibold text-base-content text-lg">{user.name}</p>
+                    <p className="text-sm text-base-content/70">{user.email}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-2">
                   <span
                     className={`px-3 py-1 text-xs font-semibold rounded-full ${
                       user.role === Role.ADMIN
-                        ? "bg-purple-100 text-purple-800"
-                        : "bg-blue-100 text-blue-800"
+                        ? "bg-purple-500/20 text-purple-600 dark:text-purple-400"
+                        : user.role === Role.CONSULTANT
+                        ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
+                        : "bg-blue-500/20 text-blue-600 dark:text-blue-400"
                     }`}
                   >
                     {user.role}
                   </span>
-                  <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                  <span className="px-3 py-1 bg-green-500/20 text-green-600 dark:text-green-400 text-xs font-semibold rounded-full">
                     Actif
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-4 w-full">
                   <button
-                    className={`flex-grow sm:flex-grow-0 btn btn-sm ${user.role === Role.USER ? 'btn-primary' : 'btn-outline'}`}
+                    className={`flex-grow sm:flex-grow-0 btn btn-sm ${
+                      user.role === Role.USER 
+                        ? 'btn-primary' 
+                        : 'btn-outline btn-outline-primary'
+                    }`}
                     onClick={() => handleRoleChange(user.email, Role.USER)}
                     disabled={user.email === currentUser?.email}
                   >
                     USER
                   </button>
                   <button
-                    className={`flex-grow sm:flex-grow-0 btn btn-sm ${user.role === Role.ADMIN ? 'btn-primary' : 'btn-outline'}`}
+                    className={`flex-grow sm:flex-grow-0 btn btn-sm ${
+                      user.role === Role.CONSULTANT 
+                        ? 'btn-primary' 
+                        : 'btn-outline btn-outline-primary'
+                    }`}
+                    onClick={() => handleRoleChange(user.email, Role.CONSULTANT)}
+                    disabled={user.email === currentUser?.email}
+                  >
+                    CONSULTANT
+                  </button>
+                  <button
+                    className={`flex-grow sm:flex-grow-0 btn btn-sm ${
+                      user.role === Role.ADMIN 
+                        ? 'btn-primary' 
+                        : 'btn-outline btn-outline-primary'
+                    }`}
                     onClick={() => handleRoleChange(user.email, Role.ADMIN)}
                     disabled={user.email === currentUser?.email}
                   >
@@ -153,9 +174,9 @@ export default function AdminClient({}: AdminClientProps) {
           </div>
         </div>
 
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-          <h3 className="font-semibold text-blue-800 mb-2">Instructions :</h3>
-          <ul className="list-disc list-inside text-blue-700 space-y-1">
+        <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm">
+          <h3 className="font-semibold text-blue-600 dark:text-blue-400 mb-2">Instructions :</h3>
+          <ul className="list-disc list-inside text-blue-600 dark:text-blue-400 space-y-1">
             <li>Modifiez le rôle d&apos;un utilisateur en cliquant sur USER ou ADMIN</li>
             <li>Vous ne pouvez pas modifier votre propre rôle</li>
             <li>Les changements prennent effet immédiatement</li>

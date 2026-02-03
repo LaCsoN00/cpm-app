@@ -2,7 +2,7 @@
 
 import Wrapper from "./Wrapper";
 import { useEffect, useState, useCallback } from "react";
-import { FolderGit2, RefreshCw } from "lucide-react";
+import { FolderGit2, RefreshCw, FolderKanban, CheckSquare, MessageSquare, FileText, HelpCircle, Briefcase } from "lucide-react";
 import { createProject, deleteProjectById, getProjectsCreatedByUser, updateTaskStatus, addUserToProject } from "../actions";
 import { useSupabaseUser } from "../hooks/useSupabaseUser";
 import { toast } from "react-hot-toast";
@@ -12,6 +12,44 @@ import ProjectComponent from "./ProjectComponent";
 import EmptyState from "./EmptyState";
 import { Role, User } from "@prisma/client"; // Import User
 import { getCurrentUser } from "../actions"; // Import getCurrentUser
+
+interface UserStatistics {
+  projectsCreated?: number;
+  projectsCollaborated?: number;
+  totalProjects?: number;
+  tasksCreated?: number;
+  tasksAssigned?: number;
+  totalTasks?: number;
+  comments?: number;
+  commentReactions?: number;
+  assistanceRequestsCreated?: number;
+  assistanceRequestsResolved?: number;
+  attachments?: number;
+  // Statistiques globales pour admin
+  totalUsers?: number;
+  activeUsers?: number;
+  approvedUsers?: number;
+  restrictedUsers?: number;
+  adminCount?: number;
+  consultantCount?: number;
+  userCount?: number;
+  tasksToDo?: number;
+  tasksInProgress?: number;
+  tasksDone?: number;
+  totalAssistanceRequests?: number;
+}
+
+interface UserProfileData {
+  id: string;
+  name: string;
+  email: string;
+  imageUrl: string | null;
+  role: Role;
+  approved: boolean;
+  restricted: boolean;
+  isGlobalStats?: boolean;
+  statistics: UserStatistics;
+}
 
 interface HomeClientProps {
   userRole: Role | "GUEST";
@@ -32,6 +70,8 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
   const [currentUserEmail, setCurrentUserEmail] = useState<string | undefined>(undefined);
   const [fullCurrentUser, setFullCurrentUser] = useState<User | null>(null); // New state for full user object
   const [refreshing, setRefreshing] = useState(false); // Ajout de l'état refreshing
+  const [profileData, setProfileData] = useState<UserProfileData | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   const filteredAndSortedProjects = [...projects].filter(project =>
     project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -211,6 +251,34 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
     await fetchProjects(currentUserEmail);
   }, [currentUserEmail, fetchProjects]); // Removed userRole from dependencies
 
+  const fetchProfileData = useCallback(async () => {
+    if (!user) {
+      setLoadingStats(false);
+      return;
+    }
+    
+    try {
+      setLoadingStats(true);
+      const response = await fetch('/api/user/profile');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user) {
+          setProfileData(data.user);
+        }
+      } else {
+        // En cas d'erreur, définir des stats vides pour éviter un blocage
+        console.warn('Failed to fetch profile data, response not ok:', response.status);
+        setProfileData(null);
+      }
+    } catch (error) {
+      console.error('Error fetching profile data:', error);
+      // En cas d'erreur réseau, définir null pour ne pas bloquer l'affichage
+      setProfileData(null);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [user]);
+
   useEffect(() => {
     const initializeUserEmail = async () => {
       if (email) {
@@ -243,6 +311,13 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
     };
     initializeUserEmail();
   }, [email, fetchProjects, syncPendingChanges]);
+
+  // Fetch stats separately when user is available
+  useEffect(() => {
+    if (user) {
+      fetchProfileData();
+    }
+  }, [user, fetchProfileData]);
 
   useEffect(() => {
     const handleOnline = async () => {
@@ -339,6 +414,7 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
   };
 
   const isButtonDisabled = !name || !descrition;
+  const stats = profileData?.statistics;
 
   return (
     <Wrapper userRole={userRole}>
@@ -380,6 +456,96 @@ export default function HomeClient({ userRole, initialProjects }: HomeClientProp
           )}
         </div>
       </div>
+
+      {/* Statistiques Dashboard - Uniquement pour utilisateurs non-admin */}
+      {!loadingStats && profileData && stats && !profileData?.isGlobalStats && (
+        <div className="grid grid-flow-col auto-cols-[minmax(240px,1fr)] gap-4 mb-6 overflow-x-auto">
+              {/* Projets */}
+              <div className="bg-base-100 rounded-lg shadow-lg p-6 border-l-4 border-primary">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <FolderKanban size={20} />
+                    Projets
+                  </h3>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-3xl font-bold text-primary">{stats.totalProjects || 0}</p>
+                  <p className="text-sm text-base-content/70">
+                    {stats.projectsCreated || 0} créé{stats.projectsCreated !== 1 ? 's' : ''} • {stats.projectsCollaborated || 0} collaboré{stats.projectsCollaborated !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+
+              {/* Tâches */}
+              <div className="bg-base-100 rounded-lg shadow-lg p-6 border-l-4 border-secondary">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <CheckSquare size={20} />
+                    Tâches
+                  </h3>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-3xl font-bold text-secondary">{stats.totalTasks || 0}</p>
+                  <p className="text-sm text-base-content/70">
+                    {stats.tasksCreated || 0} créée{stats.tasksCreated !== 1 ? 's' : ''} • {stats.tasksAssigned || 0} assignée{stats.tasksAssigned !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+
+              {/* Commentaires */}
+              <div className="bg-base-100 rounded-lg shadow-lg p-6 border-l-4 border-accent">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <MessageSquare size={20} />
+                    Commentaires
+                  </h3>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-3xl font-bold text-accent">{stats.comments || 0}</p>
+                  <p className="text-sm text-base-content/70">
+                    {stats.commentReactions || 0} réaction{stats.commentReactions !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+
+              {/* Demandes d'assistance */}
+              {((stats.assistanceRequestsCreated || 0) > 0 || (stats.assistanceRequestsResolved || 0) > 0) && (
+                <div className="bg-base-100 rounded-lg shadow-lg p-6 border-l-4 border-info">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <HelpCircle size={20} />
+                      Demandes d&apos;assistance
+                    </h3>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-3xl font-bold text-info">
+                      {(stats.assistanceRequestsCreated || 0) + (stats.assistanceRequestsResolved || 0)}
+                    </p>
+                    <p className="text-sm text-base-content/70">
+                      {stats.assistanceRequestsCreated || 0} créée{(stats.assistanceRequestsCreated || 0) !== 1 ? 's' : ''} • {stats.assistanceRequestsResolved || 0} résolue{(stats.assistanceRequestsResolved || 0) !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+
+              {/* Pièces jointes */}
+              {(stats.attachments || 0) > 0 && (
+                <div className="bg-base-100 rounded-lg shadow-lg p-6 border-l-4 border-success">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <FileText size={20} />
+                      Pièces jointes
+                    </h3>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-3xl font-bold text-success">{stats.attachments || 0}</p>
+                    <p className="text-sm text-base-content/70">Fichier{(stats.attachments || 0) !== 1 ? 's' : ''} uploadé{(stats.attachments || 0) !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+              )}
+        </div>
+      )}
 
       <dialog id="my_modal_3" className="modal">
         <div className="modal-box">

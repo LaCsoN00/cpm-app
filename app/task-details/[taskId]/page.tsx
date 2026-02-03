@@ -11,7 +11,7 @@ import { toast } from 'react-hot-toast';
 import 'react-quill-new/dist/quill.snow.css';
 import { useSupabaseUserWithRole } from '../../hooks/useSupabaseUserWithRole';
 import EditTaskForm from '@/app/components/EditTaskForm'; // Import the new form component
-import { Role, Priority } from '@prisma/client'; // Import Priority
+import { Role, Priority, Attachment } from '@prisma/client'; // Import Priority et Attachment
 import { RefreshCw } from 'lucide-react'; // Ajout de RefreshCw
 import { getCommentsForTask } from '@/app/actions';
 import { getCurrentUser } from '@/app/actions';
@@ -28,7 +28,7 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
   const { user: supabaseUser, role } = useSupabaseUserWithRole();
   const email = supabaseUser?.email;
 
-  const [task, setTask] = useState<Task | null>(null);
+  const [task, setTask] = useState<(Task & { attachments: Attachment[] }) | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [status, setStatus] = useState("");
   const [realStatus, setRealStatus] = useState("");
@@ -103,6 +103,12 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
   };
 
   const getPriorityBadgeClass = (priority: Priority) => {
+    if (task?.status === "Done") {
+      return 'badge-success';
+    }
+    if (task?.status === "Late") {
+      return 'badge-error';
+    }
     switch (priority) {
       case Priority.HIGH:
         return 'badge-error';
@@ -116,6 +122,12 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
   };
 
   const getPriorityText = (priority: Priority) => {
+    if (task?.status === "Done") {
+      return 'Terminé';
+    }
+    if (task?.status === "Late") {
+      return 'En retard';
+    }
     switch (priority) {
       case Priority.HIGH:
         return 'Haute';
@@ -158,7 +170,7 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
       setRefreshing(true); // Début du rafraîchissement
       const taskData = await getTaskDetails(currentTaskId);
       if (taskData) {
-        setTask(taskData as unknown as Task);
+        setTask(taskData as Task & { attachments: Attachment[] }); // Caster correctement le type
         setStatus(taskData.status);
         setRealStatus(taskData.status);
         await fetchProject(taskData.projectId);
@@ -308,7 +320,7 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:block">{refreshing ? 'Actualisation...' : 'Actualiser'}</span>
             </button>
-            {(task.createdBy?.email === email || role === Role.ADMIN || project?.createdById === supabaseUser?.id) && role !== Role.CONSULTANT && (
+            {(task.createdBy?.email === email || role === Role.ADMIN || project?.createdById === supabaseUser?.id) && role !== Role.CONSULTANT && task.status !== "Done" && task.priority !== "LATE" && (
               <button
                 onClick={() => setIsEditModalOpen(true)}
                 className="btn btn-sm btn-outline btn-primary ml-4"
@@ -322,8 +334,8 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         {/* Date d'échéance, priorité, deadline */}
         <div className='grid grid-cols-1 md:grid-cols-2 gap-4 items-center mb-4 p-4 border border-base-300 rounded-lg'>
           <div>
-            <span className='font-semibold'>Priorité:</span>
-            <div className={`badge ml-2 ${getPriorityBadgeClass(task.priority)}`}>
+            <span className='font-semibold mr-2'>Priorité:</span>
+            <div className={`badge ${getPriorityBadgeClass(task.priority)}`}>
               {getPriorityText(task.priority)}
             </div>
           </div>
@@ -345,6 +357,7 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
               />
             </div>
             <div className='flex flex-col items-center gap-2 my-4 md:mt-0 md:flex-row'> {/* Adjusted for mobile */} 
+              
               <div className={`badge ${getStatusBadgeClass(task.status)}`}>
                 {task.status === "To Do" && "À faire"}
                 {task.status === "In Progress" && "En cours"}
@@ -364,7 +377,7 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                     className="select select-bordered select-sm w-fit max-w-xs" /* Adjusted width */
                     value={status}
                     onChange={handleStatusChange}
-                    disabled={task.status === "Done"} // Disable if task is Done
+                    disabled={task.status === "Done" || task.priority === "LATE"}
                   >
                     <option value="To Do">À faire</option>
                     <option value="In Progress">En cours</option>
@@ -383,6 +396,22 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             dangerouslySetInnerHTML={{ __html: task.description }}
           />
         </div>
+
+        {/* Affichage des pièces jointes si elles existent */}
+        {task.attachments && task.attachments.length > 0 && (
+          <div className="form-control mb-4 mt-4 p-4 border border-base-300 rounded-md">
+            <label className="label">
+              <span className="label-text">Pièces jointes</span>
+            </label>
+            {task.attachments.map((att) => (
+              <div key={att.id} className="flex items-center mt-2">
+                <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline mr-2">
+                  {att.name}
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Solution si disponible */}
         {task?.solutionDescription && (
@@ -453,14 +482,15 @@ const Page = ({ params }: { params: Promise<{ taskId: string }> }) => {
       <dialog id="edit_task_modal" className="modal" open={isEditModalOpen}>
         <div className="modal-box w-11/12 max-w-5xl">
           <h3 className="font-bold text-lg">Modifier la tâche</h3>
-          {task && project && <EditTaskForm task={task} project={project} onClose={() => {
-            setIsEditModalOpen(false);
-            const loadDataAndRefresh = async () => {
-              const resolvedParams = await params;
-              fetchInfos(resolvedParams.taskId); // Refresh task details after update
-            };
-            loadDataAndRefresh();
-          }} />}
+          {task && project && (
+            <>
+              {console.log("Task object passed to EditTaskForm:", task)}
+              <EditTaskForm task={task} project={project} onClose={() => {
+                setIsEditModalOpen(false);
+                fetchInfos(task.id); // Recharger les détails complets de la tâche
+              }} />
+            </>
+          )}
         </div>
       </dialog>
     </Wrapper>

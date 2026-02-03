@@ -1,4 +1,4 @@
-import { Project as PrismaProject, Task as PrismaTask, User as PrismaUser, Priority , Comment , CommentReaction , Role } from '@prisma/client';
+import { Project as PrismaProject, Task as PrismaTask, User as PrismaUser, Priority , Comment , CommentReaction , Role, AssistanceRequest as PrismaAssistanceRequest } from '@prisma/client';
 
 export { Role };
 
@@ -7,6 +7,14 @@ export type User = AppUser; // Use AppUser as the main User type for the app
 
 export type ExtendedUser = User & {
   tasks?: { id: string; status: string }[];
+  assistanceRequests?: AssistanceRequest[];
+  resolvedAssistanceRequests?: AssistanceRequest[];
+};
+
+export type AssistanceRequest = PrismaAssistanceRequest & {
+  consultant: ExtendedUser;
+  resolvedBy?: ExtendedUser | null;
+  project?: Project | null;
 };
 
 export type ProjectUserExtended = {
@@ -29,6 +37,7 @@ export type Project = PrismaProject & {
   tasks?: Task[];
   users?: ProjectUserExtended[]; // Update to reflect `ProjectUser` structure
   createdBy?: ExtendedUser; // Use ExtendedUser here
+  assistanceRequests?: AssistanceRequest[];
 };
 
 export type Task = PrismaTask & {

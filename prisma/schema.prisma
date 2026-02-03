@@ -22,10 +22,9 @@ model User {
   tasks        Task[]
   assistanceRequests AssistanceRequest[] @relation("CreatedAssistanceRequests")
   resolvedAssistanceRequests AssistanceRequest[] @relation("ResolvedAssistanceRequests")
-  createdTaskRequests TaskRequest[] @relation("ConsultantTaskRequests") // Requests created by this consultant
-  resolvedTaskRequests TaskRequest[] @relation("ResolvedTaskRequests") // Requests resolved by this user/admin
   comments     Comment[]
   commentReactions CommentReaction[] // Reactions to comments created by this user
+  attachments  Attachment[] // Nouvelle relation pour les pièces jointes
 }
 
 model Project {
@@ -41,7 +40,6 @@ model Project {
   users               ProjectUser[]
   tasks               Task[]
   assistanceRequests  AssistanceRequest[] @relation("AssistanceRequestsOnProjects")
-  taskRequests        TaskRequest[] @relation("ProjectTaskRequests") // Requests for tasks within this project
 }
 
 model Task {
@@ -60,7 +58,8 @@ model Task {
   createdBy           User      @relation("CreatedTasks", fields: [createdById], references: [id])
   project             Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user                User?     @relation(fields: [userId], references: [id])
-  comments             Comment[]
+  comments            Comment[]
+  attachments         Attachment[] // Nouvelle relation pour les pièces jointes
 }
 
 model ProjectUser {
@@ -92,39 +91,27 @@ enum Priority {
   LOW
   MEDIUM
   HIGH
+  LATE // Ajout de la nouvelle priorité 'LATE'
+  UNDEFINED // Ajout de la priorité 'UNDEFINED'
 }
 
 model AssistanceRequest {
-  id           String    @id @default(uuid())
-  consultantId String
-  consultant   User      @relation("CreatedAssistanceRequests", fields: [consultantId], references: [id])
-  projectId    String? // Optional, the ID of the project for which assistance is requested
-  project      Project?  @relation("AssistanceRequestsOnProjects", fields: [projectId], references: [id])
-  message      String    // Description of the assistance required
-  status       String    @default("pending") // pending, resolved, rejected
-  createdAt    DateTime  @default(now())
-  resolvedById String? // ID of the user who resolved the request
-  resolvedBy   User?     @relation("ResolvedAssistanceRequests", fields: [resolvedById], references: [id])
-  resolvedAt   DateTime?
-}
-
-model TaskRequest {
-  id           String    @id @default(uuid())
-  projectId    String
-  project      Project   @relation("ProjectTaskRequests", fields: [projectId], references: [id], onDelete: Cascade)
-  consultantId String
-  consultant   User      @relation("ConsultantTaskRequests", fields: [consultantId], references: [id])
-  name         String
-  description  String
-  dueDate      DateTime?
-  priority     Priority  @default(LOW)
-  deadline     DateTime?
-  comments     String?
-  status       String    @default("pending") // pending, approved, rejected
-  createdAt    DateTime  @default(now())
-  resolvedById String? // ID of the user who resolved the request (e.g., ADMIN/USER)
-  resolvedBy   User?     @relation("ResolvedTaskRequests", fields: [resolvedById], references: [id])
-  resolvedAt   DateTime?
+  id              String    @id @default(uuid())
+  consultantId    String
+  consultant      User      @relation("CreatedAssistanceRequests", fields: [consultantId], references: [id])
+  projectId       String? // Optional, the ID of the project for which assistance is requested
+  project         Project?  @relation("AssistanceRequestsOnProjects", fields: [projectId], references: [id])
+  message         String    // Description of the assistance required
+  status          String    @default("pending") // pending, resolved, rejected
+  createdAt       DateTime  @default(now())
+  resolvedById    String? // ID of the user who resolved the request
+  resolvedBy      User?     @relation("ResolvedAssistanceRequests", fields: [resolvedById], references: [id])
+  resolvedAt      DateTime?
+  // Task details for requests that include a task proposal
+  taskName        String?
+  taskDescription String?
+  taskPriority    Priority?
+  taskDeadline    DateTime?
 }
 
 model Comment {
@@ -155,4 +142,17 @@ model CommentReaction {
   comment   Comment      @relation(fields: [commentId], references: [id], onDelete: Cascade)
   userId    String
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, commentId])
+}
+
+model Attachment {
+  id           String    @id @default(uuid())
+  name         String
+  url          String
+  taskId       String
+  task         Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User      @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime  @default(now())
 }

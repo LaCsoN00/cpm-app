@@ -1,5 +1,6 @@
 import { openDB } from 'idb';
 import { Project as AppProject, Task as AppTask, User as AppUser } from '@/type'; // Import types from '@/type'
+import { Attachment as PrismaAttachment } from '@prisma/client'; // Import PrismaAttachment
 
 // Nom de la base de données et du store
 const DB_NAME = 'cpmapp-db';
@@ -10,7 +11,7 @@ export const STORE_USER_DATA = 'userData'; // Nouveau store pour les données ut
 // Types pour les données stockées
 export type Project = AppProject; // Use AppProject from '@/type'
 
-export type Task = AppTask; // Use AppTask from '@/type'
+export type Task = AppTask & { attachments?: PrismaAttachment[] }; // Étendre Task pour inclure les pièces jointes
 
 export type User = AppUser; // Use AppUser from '@/type'
 

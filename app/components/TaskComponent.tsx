@@ -20,7 +20,10 @@ interface TaskProps {
 }
 
 const TaskComponent: FC<TaskProps> = ({ task, index, email , onDelete, userRole }) => {
-    const canDelete = userRole === Role.ADMIN || (userRole === Role.USER && (email == task.createdBy?.email || task.project?.users?.some(pu => pu.user.email === email)));
+    // Droits de suppression : ADMIN toujours, USER seulement s'il est créateur
+    const canDelete =
+      userRole === Role.ADMIN ||
+      (userRole === Role.USER && email === task.createdBy?.email);
 
     const handleDeleteClick = () => {
         if(onDelete){
@@ -28,33 +31,37 @@ const TaskComponent: FC<TaskProps> = ({ task, index, email , onDelete, userRole 
         }
     }
 
-    const getPriorityBadgeClass = (priority: Priority | string) => {
-        switch (priority) {
-            case Priority.HIGH:
-                return 'badge-error';
-            case Priority.MEDIUM:
-                return 'badge-warning';
-            case Priority.LOW:
-                return 'badge-info';
-            case "Late": // Nouveau statut "Late"
-                return 'badge-error-content text-white'; // Ou une autre classe appropriée pour "Late"
+    const getStatusBadgeConfig = () => {
+        switch (task.status) {
+            case "To Do":
+                return { label: "À faire", className: "bg-blue-200 text-blue-900" };
+            case "In Progress":
+                return { label: "En cours", className: "bg-yellow-200 text-yellow-900" };
+            case "Done":
+                return { label: "Terminé", className: "bg-green-200 text-green-900" };
+            case "Late":
+                return { label: "En retard", className: "bg-red-200 text-red-900" };
             default:
-                return 'badge-neutral';
+                return { label: task.status, className: "bg-base-300 text-base-content" };
         }
     };
 
-    const getPriorityText = (priority: Priority | string) => {
+    const getPriorityBadgeConfig = (priority: Priority | string) => {
+        if (task.status === "Done") {
+            return { label: "Terminé", className: "bg-green-200 text-green-900" };
+        }
+        if (task.status === "Late") {
+            return { label: "En retard", className: "bg-red-200 text-red-900" };
+        }
         switch (priority) {
             case Priority.HIGH:
-                return 'Haute';
+                return { label: "Haute", className: "bg-red-200 text-red-900" };
             case Priority.MEDIUM:
-                return 'Moyenne';
+                return { label: "Moyenne", className: "bg-yellow-200 text-yellow-900" };
             case Priority.LOW:
-                return 'Basse';
-            case "Late":
-                return 'En retard';
+                return { label: "Basse", className: "bg-blue-200 text-blue-900" };
             default:
-                return 'Non définie';
+                return { label: "Non définie", className: "bg-base-300 text-base-content" };
         }
     };
 
@@ -62,38 +69,43 @@ const TaskComponent: FC<TaskProps> = ({ task, index, email , onDelete, userRole 
         <>
             <td>{index + 1}</td>
             <td>
-                <div className='flex flex-col'>
-                    <div className={`badge text-xs mb-2  font-semibold
-                       ${task.status == "To Do" ? "bg-red-200 font-semibold" : ""}      
-                       ${task.status == "In Progress" ? "bg-yellow-200 font-semibold" : ""}                     
-                        ${task.status == "Done" ? "bg-green-200 font-semibold" : ""}   
-                        ${task.status == "Late" ? "bg-red-200 font-semibold" : ""} 
-                    `}>
-
-                        {task.status == "To Do" && 'A faire'}
-                        {task.status == "In Progress" && 'En cours'}
-                        {task.status == "Done" && 'Terminé'}
-                        {task.status == "Late" && 'En retard'}
-                    </div>
-                    <span className='text-sm font-bold'>
-                        {task.name.length > 100 ? `${task.name.slice(0, 100)}...` : task.name}
-                    </span>
+                <div className='flex flex-col mb-2'>
+                    {(() => {
+                        const { label, className } = getStatusBadgeConfig()
+                        return (
+                            <span className={`badge whitespace-nowrap text-xs font-semibold ${className}`}>
+                                {label}
+                            </span>
+                        )
+                    })()}
                 </div>
+                <span className='text-sm font-bold'>
+                    {task.name.length > 100 ? `${task.name.slice(0, 100)}...` : task.name}
+                </span>
             </td>
 
             <td>
-                <UserInfo
-                    role=""
-                    email={task.user?.email || null}
-                    name={task.user?.name || null}
-                    imageUrl={task.user?.imageUrl || null}
-                />
+                {task.user?.email ? (
+                    <UserInfo
+                        role=""
+                        email={task.user?.email || null}
+                        name={task.user?.name || null}
+                        imageUrl={task.user?.imageUrl || null}
+                    />
+                ) : (
+                    <span className="text-gray-500">Non assigné</span>
+                )}
             </td>
 
             <td>
-                <div className={`badge ${getPriorityBadgeClass(task.priority)}`}>
-                    {getPriorityText(task.priority)}
-                </div>
+                {(() => {
+                    const { label, className } = getPriorityBadgeConfig(task.priority)
+                    return (
+                        <span className={`badge whitespace-nowrap ${className}`}>
+                            {label}
+                        </span>
+                    )
+                })()}
             </td>
 
             <td>

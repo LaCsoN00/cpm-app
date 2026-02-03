@@ -122,8 +122,23 @@ export default function SupabaseAuth({ mode }: SupabaseAuthProps) {
             return
           }
 
-          toast.success('Connexion réussie !')
-          router.push('/')
+          // Vérifier le rôle et rediriger en conséquence
+          const roleResponse = await fetch('/api/user/role')
+          if (roleResponse.ok) {
+            const roleData = await roleResponse.json()
+            const userRole = roleData.user?.role
+            
+            toast.success('Connexion réussie !')
+            
+            if (userRole === 'ADMIN') {
+              router.push('/admin/dashboard')
+            } else {
+              router.push('/')
+            }
+          } else {
+            toast.success('Connexion réussie !')
+            router.push('/')
+          }
         }
       }
     } catch (error: unknown) {

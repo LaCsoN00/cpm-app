@@ -50,6 +50,11 @@ const Navbar = ({ userRole }: NavbarProps) => {
       roles: [Role.ADMIN, Role.USER, Role.CONSULTANT],
     },
     {
+      href: "/admin/dashboard",
+      label: "Dashboard",
+      roles: [Role.ADMIN],
+    },
+    {
       href: "/admin",
       label: "Administration",
       roles: [Role.ADMIN],

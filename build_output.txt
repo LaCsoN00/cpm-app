@@ -1,0 +1,51 @@
+
+> a@0.1.0 build
+> next build
+
+   Ôû▓ Next.js 15.5.2
+   - Environments: .env
+
+   Creating an optimized production build ...
+ Ô£ô (pwa) Compiling for server...
+ Ô£ô (pwa) Compiling for server...
+ Ô£ô (pwa) Compiling for client (static)...
+ Ôùï (pwa) Service worker: C:\Users\lucmo\Desktop\cpm-app\public\sw.js
+ Ôùï (pwa)   URL: /sw.js
+ Ôùï (pwa)   Scope: /
+ Ôùï (pwa) This app will fallback to these precached routes when fetching from the cache and the network fails:
+ Ôùï (pwa)   Documents (pages): /offline.html
+ Ôùï (pwa) Custom runtimeCaching array found, using it instead of the default one.
+/*! ­ƒî╝ daisyUI 5.0.51 */
+Browserslist: browsers data (caniuse-lite) is 10 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ Ô£ô Compiled successfully in 8.6s
+   Linting and checking validity of types ...
+
+./app/admin/dashboard/DashboardClient.tsx
+4:74  Warning: 'Briefcase' is defined but never used.  @typescript-eslint/no-unused-vars
+120:10  Warning: 'loadingStats' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./app/components/HomeClient.tsx
+5:97  Warning: 'Briefcase' is defined but never used.  @typescript-eslint/no-unused-vars
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+Failed to compile.
+
+./app/project/[projectId]/page.tsx:29:32
+Type error: Type 'Project | ({ tasks: { status: string; id: string; name: string; createdAt: Date; priority: Priority; description: string; deadline: Date | null; projectId: string; userId: string | null; createdById: string; solutionDescription: string | null; updatedAt: Date; }[]; assistanceRequests: { ...; }[]; createdBy: { ...; }...' is not assignable to type 'Project'.
+  Type '{ tasks: { status: string; id: string; name: string; createdAt: Date; priority: Priority; description: string; deadline: Date | null; projectId: string; userId: string | null; createdById: string; solutionDescription: string | null; updatedAt: Date; }[]; assistanceRequests: { ...; }[]; createdBy: { ...; }; users: { ...' is not assignable to type 'Project'.
+    Type '{ tasks: { status: string; id: string; name: string; createdAt: Date; priority: Priority; description: string; deadline: Date | null; projectId: string; userId: string | null; createdById: string; solutionDescription: string | null; updatedAt: Date; }[]; assistanceRequests: { ...; }[]; createdBy: { ...; }; users: { ...' is not assignable to type '{ totalTasks?: number | undefined; collaboratorsCount?: number | undefined; taskStats?: { toDo: number; inProgress: number; done: number; } | undefined; percentages?: { progressPercentage: number; inProgressPercentage: number; toDoPercentage: number; } | undefined; tasks?: Task[] | undefined; users?: ProjectUserExte...'.
+      Types of property 'assistanceRequests' are incompatible.
+        Type '{ status: string; id: string; createdAt: Date; projectId: string | null; consultantId: string; message: string; resolvedById: string | null; resolvedAt: Date | null; taskName: string | null; taskDescription: string | null; taskPriority: Priority | null; taskDeadline: Date | null; }[]' is not assignable to type 'AssistanceRequest[]'.
+          Type '{ status: string; id: string; createdAt: Date; projectId: string | null; consultantId: string; message: string; resolvedById: string | null; resolvedAt: Date | null; taskName: string | null; taskDescription: string | null; taskPriority: Priority | null; taskDeadline: Date | null; }' is not assignable to type 'AssistanceRequest'.
+            Property 'consultant' is missing in type '{ status: string; id: string; createdAt: Date; projectId: string | null; consultantId: string; message: string; resolvedById: string | null; resolvedAt: Date | null; taskName: string | null; taskDescription: string | null; taskPriority: Priority | null; taskDeadline: Date | null; }' but required in type '{ consultant: ExtendedUser; resolvedBy?: ExtendedUser | null | undefined; project?: Project | null | undefined; }'.
+
+  27 |   }
+  28 |
+> 29 |   return <ProjectDetailsClient project={project} projectId={params.projectId} userRole={userRole} />;
+     |                                ^
+  30 | };
+  31 |
+  32 | export default Page;
+Next.js build worker exited with code: 1 and signal: null

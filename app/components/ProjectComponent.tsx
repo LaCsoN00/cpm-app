@@ -112,8 +112,8 @@ const ProjectComponent: FC<ProjectProps> = ({ project, userRole, style, onDelete
 
             {canSeeInviteCode && (
                 <div className='flex items-center rounded-lg p-2 border border-base-300 mb-3 bg-base-200/30 overflow-hidden'>
-                    <p className='text-primary font-bold ml-3 flex-grow max-w-[calc(100%-60px)] overflow-hidden text-ellipsis whitespace-nowrap'>
-                        {project.inviteCode.substring(0, 30)}...
+                    <p className='text-primary font-bold ml-3 flex-grow max-w-[calc(100%-40px)] overflow-hidden text-ellipsis whitespace-nowrap'>
+                        {project.inviteCode.substring(0, 20)}...
                     </p>
                     <button className='btn btn-sm ml-2 flex-shrink-0' onClick={handleCopyCode}>
                         <Copy className='w-4' />

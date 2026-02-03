@@ -60,11 +60,7 @@ const SelectCollaboratorsModal: FC<SelectCollaboratorsModalProps> = ({
         onCollaboratorsSelected(selectedUsers); // Notify parent about selected collaborators
         onClose();
       } else {
-        let errorMessage = result.message;
-        if (result.errors && result.errors.length > 0) {
-          errorMessage += ": " + result.errors.join(", ");
-        }
-        toast.error(errorMessage);
+        toast.error(result.message);
       }
     } catch (error) {
       console.error('Error adding collaborators:', error);
